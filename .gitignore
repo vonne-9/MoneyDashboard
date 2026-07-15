@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+
+# brainstorm/mockup session files (not part of the app)
+.superpowers/

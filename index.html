@@ -1,0 +1,590 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>My Money 💰</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;700;800&display=swap"
+  rel="stylesheet"
+/>
+<link rel="stylesheet" href="css/styles.css" />
+
+<div x-data="dashboard" x-cloak class="app">
+  <!-- ===== Sidebar ===== -->
+  <aside class="sidebar" :class="{ open: sidebarOpen }">
+    <div class="side-brand">
+      <span class="brand-emoji">💰</span>
+      <h1>My Money</h1>
+    </div>
+
+    <nav class="side-nav">
+      <template x-for="n in navItems()" :key="n.id">
+        <button class="nav-item" :class="{ active: view === n.id }" @click="setView(n.id)">
+          <span class="nav-emoji" x-text="n.emoji"></span>
+          <span x-text="n.label"></span>
+        </button>
+      </template>
+    </nav>
+
+    <div class="side-foot">
+      <div class="fx-pill" :class="'fx-' + fxStatus" @click="refreshRates()" title="Click to refresh rates">
+        <span class="dot"></span>
+        <span x-text="fxLabel()"></span>
+      </div>
+      <button class="nav-item" @click="settingsOpen = true; sidebarOpen = false"><span class="nav-emoji">⚙️</span> Settings</button>
+      <button class="nav-item" @click="doExport()"><span class="nav-emoji">💾</span> Backup</button>
+      <label class="nav-item"><span class="nav-emoji">📥</span> Restore<input type="file" accept="application/json" @change="doImport($event)" hidden /></label>
+    </div>
+  </aside>
+  <div class="scrim" x-show="sidebarOpen" @click="sidebarOpen = false" x-cloak></div>
+
+  <!-- ===== Main ===== -->
+  <main class="main">
+    <!-- mobile top bar -->
+    <div class="mobilebar">
+      <button class="hamburger" @click="sidebarOpen = !sidebarOpen" aria-label="Menu">☰</button>
+      <div class="mobilebar-title" x-text="navItems().find(n => n.id === view)?.label"></div>
+      <div class="fx-pill" :class="'fx-' + fxStatus" @click="refreshRates()">
+        <span class="dot"></span>
+      </div>
+    </div>
+
+    <!-- backup reminder (gentle, dismissible) -->
+    <div class="backup-banner" x-show="showBackupReminder" x-cloak>
+      <span class="bb-emoji">🧸</span>
+      <span class="bb-text"><strong x-text="backupReminderText()"></strong> Download a copy so you don't lose your data.</span>
+      <span class="bb-actions">
+        <button class="btn btn-primary btn-sm" @click="doExport()">💾 Back up now</button>
+        <button class="minibtn" @click="snoozeBackup()">Later</button>
+      </span>
+    </div>
+
+    <!-- ============ OVERVIEW ============ -->
+    <section x-show="view === 'overview'">
+      <div class="hero">
+        <div class="hero-label">Net Worth</div>
+        <div class="hero-amount" x-text="fmtBase(totals.net)"></div>
+        <div class="hero-pills">
+          <span class="pill pill-have">💵 You have <strong x-text="fmtBase(totals.have)"></strong></span>
+          <span class="pill pill-owe" x-show="creditAccounts.length">💳 You owe <strong x-text="fmtBase(totals.owe)"></strong></span>
+        </div>
+        <div class="hero-warn" x-show="unconvertible.length">
+          ⚠️ No rate yet for <strong x-text="unconvertible.join(', ')"></strong> —
+          <button class="linkbtn" @click="settingsOpen = true">set a manual rate</button>.
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" @click="openAddAccount()">🏦 Add account</button>
+        <button class="btn" @click="openAddTx('transfer')" :disabled="data.accounts.length < 2">🔁 Transfer</button>
+        <button class="btn" @click="saveSnapshot()" :disabled="!hasAccounts">📸 Snapshot</button>
+      </div>
+
+      <div class="empty" x-show="!hasAccounts">
+        <div class="empty-emoji">🐷</div>
+        <h2>No accounts yet</h2>
+        <p>Add your bank accounts, cash, and credit cards to get started.</p>
+        <button class="btn btn-primary" @click="openAddAccount()">＋ Add your first account</button>
+      </div>
+
+      <section class="tiles" x-show="hasAccounts">
+        <template x-for="acct in data.accounts" :key="acct.id">
+          <article class="tile" :class="isCredit(acct) ? 'tint-credit' : 'tint-' + acct.type">
+            <div class="tile-top">
+              <span class="tile-emoji" x-text="acct.emoji"></span>
+              <div class="tile-menu">
+                <button class="icon" @click="openEditAccount(acct)" title="Edit">✏️</button>
+                <button class="icon" @click="deleteAccount(acct)" title="Delete">🗑️</button>
+              </div>
+            </div>
+            <div class="tile-name" x-text="acct.name"></div>
+
+            <template x-if="isCredit(acct)">
+              <div>
+                <div class="tile-amount owed">
+                  <span x-text="(acct.balance > 0 ? '−' : '') + fmt(Math.abs(acct.balance), acct.currency)"></span>
+                  <span class="owed-tag" x-text="acct.balance > 0 ? 'owed' : 'in credit'"></span>
+                </div>
+                <template x-if="utilization(acct)">
+                  <div class="util-wrap">
+                    <div class="util"><i :style="`width:${utilization(acct).pct}%;background:${utilization(acct).over ? '#ff4d4d' : '#ff8a5c'}`"></i></div>
+                    <div class="util-line">
+                      <span x-text="`${fmt(utilization(acct).owed, acct.currency)} of ${fmt(utilization(acct).limit, acct.currency)}`"></span>
+                      <span x-text="`${utilization(acct).pct}% used`"></span>
+                    </div>
+                  </div>
+                </template>
+                <div class="tile-foot">
+                  <span class="chip chip-credit">credit</span>
+                  <button class="minibtn" @click="openPayBill(acct)" :disabled="!assetAccounts.length">Pay bill →</button>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="!isCredit(acct)">
+              <div>
+                <div class="tile-amount" x-text="fmt(acct.balance, acct.currency)"></div>
+                <div class="reserved-line" x-show="reservedFor(acct) > 0">
+                  🎯 <strong x-text="fmt(reservedFor(acct), acct.currency)"></strong> reserved ·
+                  <span x-text="fmt(availableOf(acct), acct.currency)"></span> free
+                </div>
+                <div class="tile-foot">
+                  <span class="chip" x-text="acct.type"></span>
+                  <span class="tile-base" x-show="acct.currency !== baseCurrency">
+                    ≈ <span x-text="baseOf(acct) === null ? '—' : fmtBase(baseOf(acct))"></span>
+                  </span>
+                </div>
+                <div class="reconcile-row">
+                  <span class="rec-badge"
+                    :class="{ ok: reconcileState(acct) === 'ok', warn: reconcileState(acct) === 'check' }"
+                    x-text="reconcileState(acct) === 'ok' ? '✓ reconciled' : (reconcileState(acct) === 'check' ? '⚠ check balance' : 'new')"></span>
+                  <button class="minibtn" @click="openReconcile(acct)">Reconcile ▸</button>
+                </div>
+              </div>
+            </template>
+          </article>
+        </template>
+      </section>
+
+      <section class="card chart-card" x-show="hasAccounts">
+        <h3>Net worth over time 📈</h3>
+        <div class="chart-wrap" x-show="hasSnapshots"><canvas x-ref="trend"></canvas></div>
+        <div x-show="!hasSnapshots" class="muted">Press 📸 Snapshot to start tracking your trend.</div>
+      </section>
+    </section>
+
+    <!-- ============ SPENDING ============ -->
+    <section x-show="view === 'spending'">
+      <div class="page-head">
+        <h2>Spending 💸</h2>
+        <div class="actions">
+          <button class="btn btn-primary" @click="openAddTx('expense')" :disabled="!hasAccounts">＋ Log spending</button>
+          <button class="btn" @click="budgetsModal = true">🎯 Budgets</button>
+          <button class="btn" @click="exportExpensesXLSX()" title="Export expenses to a new Excel workbook (a tab per month)">📊 Export Excel</button>
+        </div>
+      </div>
+
+      <div class="empty" x-show="!hasAccounts">
+        <div class="empty-emoji">🧾</div>
+        <h2>No accounts yet</h2>
+        <p>Add an account on the Overview page first, then log spending here.</p>
+        <button class="btn btn-primary" @click="setView('overview')">Go to Overview</button>
+      </div>
+
+      <div class="two-col" x-show="hasAccounts">
+        <section class="card">
+          <div class="card-head">
+            <h3>This month 📅</h3>
+            <button class="minibtn" @click="budgetsModal = true">Set budgets</button>
+          </div>
+          <div x-show="!budgetRows.length" class="muted">No spending logged this month yet.</div>
+          <template x-for="row in budgetRows" :key="row.name">
+            <div class="cat">
+              <div class="cat-row">
+                <span><span x-text="row.emoji"></span> <span x-text="row.name"></span>
+                  <span class="over-tag" x-show="row.over">over!</span>
+                </span>
+                <span x-text="row.limit > 0 ? `${fmtBase(row.spent)} / ${fmtBase(row.limit)}` : fmtBase(row.spent)"></span>
+              </div>
+              <div class="bar" x-show="row.limit > 0"><i :style="`width:${barWidth(row.pct)};background:${barColor(row)}`"></i></div>
+            </div>
+          </template>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h3>Upcoming 🔔</h3>
+            <button class="btn btn-primary btn-sm" @click="openAddRecurring()">＋ Recurring</button>
+          </div>
+          <div x-show="!hasRecurring" class="muted">Add recurring items (salary, rent, subscriptions) to see what's coming up.</div>
+          <template x-for="item in upcoming" :key="item.id">
+            <div class="rec">
+              <div class="rec-left">
+                <span class="rec-emoji" x-text="item.emoji"></span>
+                <div>
+                  <div class="rec-name" x-text="item.name"></div>
+                  <div class="rec-sub">
+                    <span x-text="txAccountLabel(item)"></span> ·
+                    <span x-text="item.cadence"></span> ·
+                    <span class="rec-due" :class="dueClass(item)" x-text="dueLabel(item)"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="rec-right">
+                <span class="rec-val" :class="item.kind"
+                  x-text="(item.kind === 'income' ? '+' : item.kind === 'expense' ? '−' : '') + fmt(item.amount, recCurrency(item))"></span>
+                <div class="rec-actions">
+                  <button class="minibtn" @click="logRecurringNow(item)" title="Log this now">Log ✓</button>
+                  <button class="icon" @click="skipRecurring(item)" title="Skip to next">⏭️</button>
+                  <button class="icon" @click="openEditRecurring(item)" title="Edit">✏️</button>
+                  <button class="icon" @click="deleteRecurring(item)" title="Delete">🗑️</button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </section>
+      </div>
+
+      <section class="card activity" x-show="hasAccounts">
+        <div class="card-head">
+          <h3>Recent activity</h3>
+          <button class="btn btn-primary btn-sm" @click="openAddTx('expense')">＋ Add</button>
+        </div>
+        <div x-show="!recentTx.length" class="muted">Nothing logged yet. Tap “Add” to record your first expense.</div>
+        <template x-for="t in recentTx" :key="t.id">
+          <div class="tx">
+            <div class="tx-left">
+              <span class="tx-emoji" x-text="t.kind === 'transfer' ? '🔁' : categoryEmoji(t.category)"></span>
+              <div>
+                <div class="tx-who" x-text="t.note || (t.kind === 'transfer' ? 'Transfer' : t.category)"></div>
+                <div class="tx-sub">
+                  <span x-text="txAccountLabel(t)"></span> ·
+                  <span x-text="t.kind === 'transfer' ? 'Transfer' : t.category"></span> ·
+                  <span x-text="t.date"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tx-right">
+              <span class="tx-val" :class="t.kind" x-text="txSign(t) + fmt(t.amount, txCurrency(t))"></span>
+              <span class="tx-actions">
+                <button class="icon" @click="openEditTx(t)" title="Edit">✏️</button>
+                <button class="icon" @click="deleteTx(t)" title="Delete">🗑️</button>
+              </span>
+            </div>
+          </div>
+        </template>
+      </section>
+    </section>
+
+    <!-- ============ GOALS ============ -->
+    <section x-show="view === 'goals'">
+      <div class="page-head">
+        <h2>Savings goals 🎯</h2>
+        <div class="actions">
+          <button class="btn btn-primary" @click="openAddGoal()">＋ New goal</button>
+        </div>
+      </div>
+
+      <div class="empty" x-show="!assetAccounts.length">
+        <div class="empty-emoji">🏖️</div>
+        <h2>No accounts to fund goals</h2>
+        <p>Add a bank or cash account on the Overview page first.</p>
+        <button class="btn btn-primary" @click="setView('overview')">Go to Overview</button>
+      </div>
+
+      <div x-show="assetAccounts.length && !hasGoals" class="empty">
+        <div class="empty-emoji">✨</div>
+        <h2>No goals yet</h2>
+        <p>Set a goal and watch the bar fill up as you reserve money.</p>
+        <button class="btn btn-primary" @click="openAddGoal()">＋ New goal</button>
+      </div>
+
+      <div class="goal-grid" x-show="hasGoals">
+        <template x-for="g in data.goals" :key="g.id">
+          <div class="goal">
+            <div class="goal-top">
+              <span class="goal-emoji" x-text="g.emoji"></span>
+              <div class="goal-menu">
+                <button class="icon" @click="openEditGoal(g)" title="Edit">✏️</button>
+                <button class="icon" @click="deleteGoal(g)" title="Delete">🗑️</button>
+              </div>
+            </div>
+            <div class="goal-name" x-text="g.name"></div>
+            <div class="goal-nums">
+              <strong x-text="fmt(g.saved, goalCurrency(g))"></strong>
+              <span x-text="'of ' + fmt(g.targetAmount, goalCurrency(g))"></span>
+            </div>
+            <div class="bar"><i :style="`width:${goalPct(g)}%;background:${goalPct(g) >= 100 ? '#7ee7c7' : '#a0c4ff'}`"></i></div>
+            <div class="goal-foot">
+              <span class="goal-from">from <span x-text="accountName(g.accountId)"></span></span>
+              <span class="goal-pct" x-text="goalPct(g) + '%'"></span>
+            </div>
+            <div class="goal-actions">
+              <button class="minibtn" @click="openContribute(g, 'add')">＋ Add</button>
+              <button class="minibtn" @click="openContribute(g, 'take')">− Take out</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <footer class="footer">Everything is saved on this computer. Back up now &amp; then. 🧸</footer>
+  </main>
+
+  <!-- ===== Account modal ===== -->
+  <div class="overlay" x-show="accountModal" @click.self="accountModal = false" x-cloak>
+    <div class="modal">
+      <h3 x-text="acct.id ? 'Edit account' : 'Add account'"></h3>
+      <label class="field"><span>Name</span>
+        <input type="text" x-model="acct.name" placeholder="e.g. Chase Checking" @keydown.enter="saveAccount()" />
+      </label>
+      <label class="field"><span>Type</span>
+        <select x-model="acct.type">
+          <template x-for="t in types" :key="t.value"><option :value="t.value" x-text="t.label"></option></template>
+        </select>
+      </label>
+      <div class="field"><span>Icon</span>
+        <div class="emoji-grid">
+          <template x-for="e in emojis" :key="e">
+            <button type="button" class="emoji-opt" :class="{ picked: acct.emoji === e }" @click="acct.emoji = e" x-text="e"></button>
+          </template>
+        </div>
+      </div>
+      <div class="field-row">
+        <label class="field"><span>Currency</span>
+          <select x-model="acct.currency">
+            <template x-for="c in currencies" :key="c"><option :value="c" x-text="c"></option></template>
+          </select>
+        </label>
+        <label class="field">
+          <span x-text="acct.type === 'credit' ? 'Amount owed now' : 'Balance'"></span>
+          <input type="number" step="any" x-model="acct.balance" placeholder="0.00" @keydown.enter="saveAccount()" />
+        </label>
+      </div>
+      <label class="field" x-show="acct.type === 'credit'"><span>Credit limit (optional)</span>
+        <input type="number" step="any" x-model="acct.creditLimit" placeholder="e.g. 2000" />
+      </label>
+      <div class="modal-actions">
+        <button class="btn" @click="accountModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveAccount()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Transaction modal ===== -->
+  <div class="overlay" x-show="txModal" @click.self="txModal = false" x-cloak>
+    <div class="modal">
+      <h3 x-text="tx.id ? 'Edit entry' : 'Log activity'"></h3>
+      <div class="seg">
+        <button :class="{ active: tx.kind === 'expense' }" @click="setTxKind('expense')">Expense</button>
+        <button :class="{ active: tx.kind === 'income' }" @click="setTxKind('income')">Income</button>
+        <button :class="{ active: tx.kind === 'transfer' }" @click="setTxKind('transfer')">Transfer</button>
+      </div>
+      <label class="field"><span x-text="tx.kind === 'transfer' ? 'From account' : 'Account'"></span>
+        <select x-model="tx.accountId">
+          <template x-for="a in data.accounts" :key="a.id">
+            <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
+          </template>
+        </select>
+      </label>
+      <label class="field" x-show="tx.kind === 'transfer'"><span>To account</span>
+        <select x-model="tx.toAccountId">
+          <template x-for="a in data.accounts.filter(x => x.id !== tx.accountId)" :key="a.id">
+            <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
+          </template>
+        </select>
+      </label>
+      <div class="field-row">
+        <label class="field"><span>Amount</span>
+          <input type="number" step="any" x-model="tx.amount" placeholder="0.00" @keydown.enter="saveTx()" />
+        </label>
+        <label class="field"><span>Date</span>
+          <input type="date" x-model="tx.date" />
+        </label>
+      </div>
+      <label class="field" x-show="tx.kind !== 'transfer'"><span>Category</span>
+        <select x-model="tx.category">
+          <template x-for="c in categories" :key="c.name">
+            <option :value="c.name" x-text="`${c.emoji} ${c.name}`"></option>
+          </template>
+        </select>
+      </label>
+      <label class="field"><span>Note (optional)</span>
+        <input type="text" x-model="tx.note" placeholder="e.g. Ramen Bar" @keydown.enter="saveTx()" />
+      </label>
+      <p class="hint" x-show="tx.kind === 'expense' && isCredit(data.accounts.find(a => a.id === tx.accountId) || {})">
+        💳 This is on a credit card — it raises what you owe and won't touch your bank until you pay the bill.
+      </p>
+      <div class="modal-actions">
+        <button class="btn" @click="txModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveTx()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Reconcile modal ===== -->
+  <div class="overlay" x-show="reconcileModal" @click.self="reconcileModal = false" x-cloak>
+    <div class="modal" x-show="reconAccount">
+      <h3>Reconcile <span x-text="reconAccount?.name"></span></h3>
+      <p class="hint">
+        We think this account currently holds
+        <strong x-text="reconAccount ? fmt(reconAccount.balance, reconAccount.currency) : ''"></strong>
+        <span x-show="reconAccount && isCredit(reconAccount)">(owed)</span>.
+        Open your bank/card app and type the <strong>real</strong> amount below — we'll log any difference.
+      </p>
+      <label class="field">
+        <span x-text="reconAccount && isCredit(reconAccount) ? 'Real amount owed' : 'Real balance'"></span>
+        <input type="number" step="any" x-model="recon.actual" @keydown.enter="saveReconcile()" />
+      </label>
+      <div class="modal-actions">
+        <button class="btn" @click="reconcileModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveReconcile()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Budgets modal ===== -->
+  <div class="overlay" x-show="budgetsModal" @click.self="budgetsModal = false" x-cloak>
+    <div class="modal">
+      <h3>Monthly budgets 🎯</h3>
+      <p class="hint">Set a monthly limit per category, in <strong x-text="baseCurrency"></strong>. Leave blank for no limit.</p>
+      <div class="rate-list">
+        <template x-for="c in categories.filter(c => c.name !== 'Income' && c.name !== 'Adjustment')" :key="c.name">
+          <div class="rate-row">
+            <span class="rate-code"><span x-text="c.emoji"></span> <span x-text="c.name"></span></span>
+            <input type="number" step="any" placeholder="none" :value="budgetFor(c.name)"
+              @change="setBudget(c.name, $event.target.value)" />
+            <span class="rate-base" x-text="baseCurrency"></span>
+          </div>
+        </template>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" @click="budgetsModal = false">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Goal modal ===== -->
+  <div class="overlay" x-show="goalModal" @click.self="goalModal = false" x-cloak>
+    <div class="modal">
+      <h3 x-text="goal.id ? 'Edit goal' : 'New savings goal'"></h3>
+      <label class="field"><span>Goal name</span>
+        <input type="text" x-model="goal.name" placeholder="e.g. Vacation" @keydown.enter="saveGoal()" />
+      </label>
+      <div class="field"><span>Icon</span>
+        <div class="emoji-grid">
+          <template x-for="e in goalEmojis" :key="e">
+            <button type="button" class="emoji-opt" :class="{ picked: goal.emoji === e }" @click="goal.emoji = e" x-text="e"></button>
+          </template>
+        </div>
+      </div>
+      <label class="field"><span>Funded from</span>
+        <select x-model="goal.accountId">
+          <template x-for="a in assetAccounts" :key="a.id">
+            <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
+          </template>
+        </select>
+      </label>
+      <label class="field"><span>Target amount</span>
+        <input type="number" step="any" x-model="goal.targetAmount" placeholder="2000" @keydown.enter="saveGoal()" />
+      </label>
+      <p class="hint">Reserving money for a goal earmarks part of that account — it doesn't move money or change your net worth.</p>
+      <div class="modal-actions">
+        <button class="btn" @click="goalModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveGoal()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Contribute modal ===== -->
+  <div class="overlay" x-show="contributeModal" @click.self="contributeModal = false" x-cloak>
+    <div class="modal" x-show="contribGoal">
+      <h3 x-text="(contrib.mode === 'add' ? 'Add to ' : 'Take out of ') + (contribGoal?.name || '')"></h3>
+      <p class="hint">
+        <span x-text="contrib.mode === 'add' ? 'Reserve more from' : 'Release back to'"></span>
+        <strong x-text="contribGoal ? accountName(contribGoal.accountId) : ''"></strong>.
+      </p>
+      <label class="field"><span>Amount</span>
+        <input type="number" step="any" x-model="contrib.amount" @keydown.enter="saveContribute()" />
+      </label>
+      <div class="modal-actions">
+        <button class="btn" @click="contributeModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveContribute()" x-text="contrib.mode === 'add' ? 'Add' : 'Take out'"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Recurring modal ===== -->
+  <div class="overlay" x-show="recurringModal" @click.self="recurringModal = false" x-cloak>
+    <div class="modal">
+      <h3 x-text="rec.id ? 'Edit recurring item' : 'New recurring item'"></h3>
+      <div class="seg">
+        <button :class="{ active: rec.kind === 'expense' }" @click="setRecKind('expense')">Expense</button>
+        <button :class="{ active: rec.kind === 'income' }" @click="setRecKind('income')">Income</button>
+        <button :class="{ active: rec.kind === 'transfer' }" @click="setRecKind('transfer')">Transfer</button>
+      </div>
+      <label class="field"><span>Name</span>
+        <input type="text" x-model="rec.name" placeholder="e.g. Rent, Salary, Netflix" @keydown.enter="saveRecurring()" />
+      </label>
+      <label class="field"><span x-text="rec.kind === 'transfer' ? 'From account' : 'Account'"></span>
+        <select x-model="rec.accountId">
+          <template x-for="a in data.accounts" :key="a.id">
+            <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
+          </template>
+        </select>
+      </label>
+      <label class="field" x-show="rec.kind === 'transfer'"><span>To account</span>
+        <select x-model="rec.toAccountId">
+          <template x-for="a in data.accounts.filter(x => x.id !== rec.accountId)" :key="a.id">
+            <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
+          </template>
+        </select>
+      </label>
+      <div class="field-row">
+        <label class="field"><span>Amount</span>
+          <input type="number" step="any" x-model="rec.amount" placeholder="0.00" />
+        </label>
+        <label class="field"><span>Repeats</span>
+          <select x-model="rec.cadence">
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field" x-show="rec.kind !== 'transfer'"><span>Category</span>
+          <select x-model="rec.category">
+            <template x-for="c in categories" :key="c.name">
+              <option :value="c.name" x-text="`${c.emoji} ${c.name}`"></option>
+            </template>
+          </select>
+        </label>
+        <label class="field"><span>Next date</span>
+          <input type="date" x-model="rec.nextDate" />
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" @click="recurringModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveRecurring()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Settings modal ===== -->
+  <div class="overlay" x-show="settingsOpen" @click.self="settingsOpen = false" x-cloak>
+    <div class="modal">
+      <h3>Settings ⚙️</h3>
+      <label class="field"><span>Base currency (everything totals in this)</span>
+        <select @change="changeBase($event.target.value)">
+          <template x-for="c in currencies" :key="c"><option :value="c" :selected="c === baseCurrency" x-text="c"></option></template>
+        </select>
+      </label>
+      <div class="field"><span>Manual exchange rates (optional — overrides live rates)</span>
+        <p class="hint">Value = how many base (<span x-text="baseCurrency"></span>) per 1 unit. Leave blank to use live rates.</p>
+        <div class="rate-list">
+          <template x-for="c in currencies.filter(x => x !== baseCurrency)" :key="c">
+            <div class="rate-row">
+              <span class="rate-code">1 <span x-text="c"></span> =</span>
+              <input type="number" step="any" placeholder="live" :value="manualRateFor(c)" @change="setManualRate(c, $event.target.value)" />
+              <span class="rate-base" x-text="baseCurrency"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" @click="refreshRates()">🔄 Refresh live rates</button>
+        <button class="btn btn-primary" @click="settingsOpen = false">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Toast ===== -->
+  <div class="toast" x-show="toast" x-transition x-text="toast" x-cloak></div>
+</div>
+
+<script src="vendor/chart.min.js"></script>
+<script src="vendor/xlsx-js-style.js"></script>
+<!-- app.js (module, deferred) registers the Alpine component BEFORE alpine.min.js starts it -->
+<script type="module" src="js/app.js"></script>
+<script src="vendor/alpine.min.js" defer></script>
