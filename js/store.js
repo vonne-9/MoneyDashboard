@@ -2,7 +2,7 @@
 // Everything the dashboard knows lives in one JSON blob under a single key.
 
 const STORAGE_KEY = 'money-dashboard-v1';
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 5;
 
 // Cute default spending categories (Phase 2). Users can add their own later.
 export const DEFAULT_CATEGORIES = [
@@ -24,10 +24,18 @@ export const DEFAULT_CATEGORIES = [
 function defaultData() {
   return {
     schemaVersion: SCHEMA_VERSION,
-    settings: { baseCurrency: 'USD', manualRates: {} },
+    settings: {
+      baseCurrency: 'USD',
+      manualRates: {},
+      // Used only for retirement-account unlock countdowns; never leaves this device.
+      birthDate: '',
+    },
     fxCache: null, // { base, rates: {CODE: rate}, fetchedAt }
-    // accounts: { id, name, type: bank|cash|other|credit, emoji, currency, balance,
-    //             creditLimit?, reconciledAt? }   (credit: balance = amount owed)
+    // accounts: { id, name, type: bank|cash|savings|cd|investment|retirement|credit|other,
+    //             emoji, currency, balance, creditLimit?, reconciledAt?,
+    //             interestRate? (savings/cd, APY %), maturityDate? (cd),
+    //             unlockAge? (retirement), costBasis? (investment) }
+    //   credit: balance = amount owed
     accounts: [],
     snapshots: [], // { date, totalInBase, perAccount: {id: balanceInBase} }
     // transactions: { id, accountId, toAccountId?, date, createdAt, amount,

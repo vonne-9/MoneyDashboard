@@ -186,6 +186,10 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; letter-spacing: -0.5px
 .tint-bank { background: var(--sky); }
 .tint-cash { background: var(--mint); }
 .tint-other { background: var(--lilac); }
+.tint-savings { background: #7ed6e7; }
+.tint-cd { background: #ffd166; }
+.tint-investment { background: #ffb4a2; }
+.tint-retirement { background: #e2b6ff; }
 .tile-top { display: flex; justify-content: space-between; align-items: flex-start; }
 .tile-emoji {
   font-size: 30px; background: var(--paper); border: var(--border);
@@ -354,6 +358,20 @@ input:focus, select:focus { outline: none; box-shadow: var(--shadow-sm); }
 /* reserved/available line on asset tiles */
 .reserved-line { font-size: 12px; font-weight: 800; opacity: .8; margin-top: 6px; }
 .reserved-line strong { font-family: var(--font-display); }
+
+/* savings/CD/investment/retirement info lines on tiles */
+.extra-line { font-size: 12px; font-weight: 800; margin-top: 6px; }
+.extra-line strong { font-family: var(--font-display); }
+.extra-line .dim { opacity: .65; font-weight: 700; }
+.lock-line { opacity: .95; }
+.unlock-line { color: #1e6b45; }
+.gain { color: #1e6b45; }
+.loss { color: #c0392b; }
+
+/* hero: locked pill + interest line */
+.pill-locked { background: #ffd166; }
+.hero-interest { margin-top: 10px; font-weight: 800; font-size: 14px; }
+.hero-interest strong { font-family: var(--font-display); }
 
 /* goals grid */
 .goal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }

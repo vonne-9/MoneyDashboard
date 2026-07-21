@@ -98,6 +98,87 @@ export function daysUntil(dateStr, todayStr) {
   return Math.round((a - b) / 86400000);
 }
 
+// --- Savings / CD / investment / retirement helpers (asset subtypes) ---
+
+// Days until a CD matures (null when not a CD / no date set).
+export function cdDaysToMaturity(account, todayStr) {
+  if (account?.type !== 'cd' || !account.maturityDate) return null;
+  return daysUntil(account.maturityDate, todayStr);
+}
+
+// Retirement unlock info: when does this account become available?
+// Needs settings.birthDate; daysLeft === null means "birth date not set yet".
+export function retirementInfo(account, settings, todayStr) {
+  if (account?.type !== 'retirement') return null;
+  const unlockAge = Number(account.unlockAge) > 0 ? Number(account.unlockAge) : 59.5;
+  if (!settings?.birthDate) return { unlockAge, unlockDate: null, daysLeft: null };
+  const b = new Date(settings.birthDate + 'T00:00:00');
+  const whole = Math.floor(unlockAge);
+  const months = Math.round((unlockAge - whole) * 12);
+  const d = new Date(b);
+  d.setFullYear(b.getFullYear() + whole);
+  d.setMonth(d.getMonth() + months);
+  const unlockDate = d.toISOString().slice(0, 10);
+  return { unlockAge, unlockDate, daysLeft: daysUntil(unlockDate, todayStr) };
+}
+
+// Locked = you can't spend it yet (CD before maturity; retirement before unlock age).
+// A retirement account with no birth date set counts as locked (safe default).
+export function isLocked(account, settings, todayStr) {
+  if (account?.type === 'cd') {
+    const d = cdDaysToMaturity(account, todayStr);
+    return d !== null && d > 0;
+  }
+  if (account?.type === 'retirement') {
+    const info = retirementInfo(account, settings, todayStr);
+    return info.daysLeft === null || info.daysLeft > 0;
+  }
+  return false;
+}
+
+// Total locked money, in base currency (still part of net worth — just not spendable).
+export function lockedTotal(data, todayStr) {
+  return data.accounts.reduce((sum, a) => {
+    if (!isLocked(a, data.settings, todayStr)) return sum;
+    const v = toBase(Number(a.balance) || 0, a.currency, data);
+    return sum + (v ?? 0);
+  }, 0);
+}
+
+// Projected interest per year for savings/CD accounts with an APY set.
+export function annualInterest(account) {
+  const r = Number(account?.interestRate);
+  if (!(r > 0) || (account.type !== 'savings' && account.type !== 'cd')) return null;
+  return ((Number(account.balance) || 0) * r) / 100;
+}
+
+// Everything you're earning per year across accounts, in base currency.
+export function totalAnnualInterest(data) {
+  return data.accounts.reduce((sum, a) => {
+    const i = annualInterest(a);
+    if (i == null) return sum;
+    const v = toBase(i, a.currency, data);
+    return sum + (v ?? 0);
+  }, 0);
+}
+
+// Rough CD payout at maturity (simple interest on the remaining term — labeled ≈ in the UI).
+export function cdValueAtMaturity(account, todayStr) {
+  const days = cdDaysToMaturity(account, todayStr);
+  const r = Number(account.interestRate);
+  if (days === null || days <= 0 || !(r > 0)) return null;
+  return (Number(account.balance) || 0) * (1 + (r / 100) * (days / 365));
+}
+
+// Investment gain/loss vs what you put in (cost basis).
+export function gainLoss(account) {
+  if (account?.type !== 'investment') return null;
+  const basis = Number(account.costBasis);
+  if (!(basis > 0)) return null;
+  const diff = (Number(account.balance) || 0) - basis;
+  return { diff, pct: (diff / basis) * 100 };
+}
+
 export function spendByCategory(data, ym) {
   const totalsByCat = {};
   for (const tx of data.transactions) {

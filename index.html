@@ -67,6 +67,12 @@
         <div class="hero-pills">
           <span class="pill pill-have">💵 You have <strong x-text="fmtBase(totals.have)"></strong></span>
           <span class="pill pill-owe" x-show="creditAccounts.length">💳 You owe <strong x-text="fmtBase(totals.owe)"></strong></span>
+          <span class="pill pill-locked" x-show="lockedTotal > 0.005"
+            title="Money in CDs & retirement accounts — counted in your net worth, but not spendable yet">
+            🔒 Locked <strong x-text="fmtBase(lockedTotal)"></strong></span>
+        </div>
+        <div class="hero-interest" x-show="interestPerYear > 0.005">
+          ✨ Earning ≈ <strong x-text="fmtBase(interestPerYear)"></strong>/year in interest
         </div>
         <div class="hero-warn" x-show="unconvertible.length">
           ⚠️ No rate yet for <strong x-text="unconvertible.join(', ')"></strong> —
@@ -88,57 +94,114 @@
       </div>
 
       <section class="tiles" x-show="hasAccounts">
-        <template x-for="acct in data.accounts" :key="acct.id">
-          <article class="tile" :class="isCredit(acct) ? 'tint-credit' : 'tint-' + acct.type">
+        <template x-for="acc in data.accounts" :key="acc.id">
+          <article class="tile" :class="isCredit(acc) ? 'tint-credit' : 'tint-' + acc.type">
             <div class="tile-top">
-              <span class="tile-emoji" x-text="acct.emoji"></span>
+              <span class="tile-emoji" x-text="acc.emoji"></span>
               <div class="tile-menu">
-                <button class="icon" @click="openEditAccount(acct)" title="Edit">✏️</button>
-                <button class="icon" @click="deleteAccount(acct)" title="Delete">🗑️</button>
+                <button class="icon" @click="openEditAccount(acc)" title="Edit">✏️</button>
+                <button class="icon" @click="deleteAccount(acc)" title="Delete">🗑️</button>
               </div>
             </div>
-            <div class="tile-name" x-text="acct.name"></div>
+            <div class="tile-name" x-text="acc.name"></div>
 
-            <template x-if="isCredit(acct)">
+            <template x-if="isCredit(acc)">
               <div>
                 <div class="tile-amount owed">
-                  <span x-text="(acct.balance > 0 ? '−' : '') + fmt(Math.abs(acct.balance), acct.currency)"></span>
-                  <span class="owed-tag" x-text="acct.balance > 0 ? 'owed' : 'in credit'"></span>
+                  <span x-text="(acc.balance > 0 ? '−' : '') + fmt(Math.abs(acc.balance), acc.currency)"></span>
+                  <span class="owed-tag" x-text="acc.balance > 0 ? 'owed' : 'in credit'"></span>
                 </div>
-                <template x-if="utilization(acct)">
+                <template x-if="utilization(acc)">
                   <div class="util-wrap">
-                    <div class="util"><i :style="`width:${utilization(acct).pct}%;background:${utilization(acct).over ? '#ff4d4d' : '#ff8a5c'}`"></i></div>
+                    <div class="util"><i :style="`width:${utilization(acc).pct}%;background:${utilization(acc).over ? '#ff4d4d' : '#ff8a5c'}`"></i></div>
                     <div class="util-line">
-                      <span x-text="`${fmt(utilization(acct).owed, acct.currency)} of ${fmt(utilization(acct).limit, acct.currency)}`"></span>
-                      <span x-text="`${utilization(acct).pct}% used`"></span>
+                      <span x-text="`${fmt(utilization(acc).owed, acc.currency)} of ${fmt(utilization(acc).limit, acc.currency)}`"></span>
+                      <span x-text="`${utilization(acc).pct}% used`"></span>
                     </div>
                   </div>
                 </template>
                 <div class="tile-foot">
                   <span class="chip chip-credit">credit</span>
-                  <button class="minibtn" @click="openPayBill(acct)" :disabled="!assetAccounts.length">Pay bill →</button>
+                  <button class="minibtn" @click="openPayBill(acc)" :disabled="!assetAccounts.length">Pay bill →</button>
+                </div>
+                <div class="reconcile-row">
+                  <span class="rec-badge"
+                    :class="{ ok: reconcileState(acc) === 'ok', warn: reconcileState(acc) === 'check' }"
+                    x-text="reconcileState(acc) === 'ok' ? '✓ reconciled' : (reconcileState(acc) === 'check' ? '⚠ check balance' : 'new')"></span>
+                  <button class="minibtn" @click="openReconcile(acc)">Reconcile ▸</button>
                 </div>
               </div>
             </template>
 
-            <template x-if="!isCredit(acct)">
+            <template x-if="!isCredit(acc)">
               <div>
-                <div class="tile-amount" x-text="fmt(acct.balance, acct.currency)"></div>
-                <div class="reserved-line" x-show="reservedFor(acct) > 0">
-                  🎯 <strong x-text="fmt(reservedFor(acct), acct.currency)"></strong> reserved ·
-                  <span x-text="fmt(availableOf(acct), acct.currency)"></span> free
+                <div class="tile-amount" x-text="fmt(acc.balance, acc.currency)"></div>
+                <div class="reserved-line" x-show="reservedFor(acc) > 0">
+                  🎯 <strong x-text="fmt(reservedFor(acc), acc.currency)"></strong> reserved ·
+                  <span x-text="fmt(availableOf(acc), acc.currency)"></span> free
                 </div>
+
+                <!-- savings & CD: projected interest -->
+                <div class="extra-line" x-show="annualInterest(acc)">
+                  ✨ ≈ <strong x-text="fmt(annualInterest(acc), acc.currency)"></strong>/yr
+                  <span class="dim" x-text="`at ${acc.interestRate}% APY`"></span>
+                </div>
+
+                <!-- CD: lock countdown & projected payout -->
+                <template x-if="acc.type === 'cd' && cdInfo(acc)">
+                  <div class="extra-line" :class="cdInfo(acc).matured ? 'unlock-line' : 'lock-line'">
+                    <template x-if="!cdInfo(acc).matured">
+                      <span>🔒 Matures <strong x-text="acc.maturityDate"></strong>
+                        <span class="dim" x-text="`(${untilLabel(cdInfo(acc).days)})`"></span>
+                        <span x-show="cdInfo(acc).projected"> → ≈ <strong x-text="fmt(cdInfo(acc).projected, acc.currency)"></strong></span>
+                      </span>
+                    </template>
+                    <template x-if="cdInfo(acc).matured">
+                      <span>🔓 Matured — money's available!</span>
+                    </template>
+                  </div>
+                </template>
+                <div class="extra-line lock-line" x-show="acc.type === 'cd' && !acc.maturityDate">
+                  ⏳ No maturity date set — edit ✏️ to add one
+                </div>
+
+                <!-- investment: gain/loss vs cost basis -->
+                <template x-if="gainLoss(acc)">
+                  <div class="extra-line" :class="gainLoss(acc).diff >= 0 ? 'gain' : 'loss'">
+                    <span x-text="gainLoss(acc).diff >= 0 ? '📈' : '📉'"></span>
+                    <strong x-text="(gainLoss(acc).diff >= 0 ? '+' : '−') + fmt(Math.abs(gainLoss(acc).diff), acc.currency)"></strong>
+                    <span x-text="`(${gainLoss(acc).diff >= 0 ? '+' : ''}${gainLoss(acc).pct.toFixed(1)}%) vs what you put in`"></span>
+                  </div>
+                </template>
+
+                <!-- retirement: unlock countdown -->
+                <template x-if="acc.type === 'retirement'">
+                  <div class="extra-line" :class="isLockedAcct(acc) ? 'lock-line' : 'unlock-line'">
+                    <template x-if="!data.settings.birthDate">
+                      <span>🔒 Until age <strong x-text="acc.unlockAge || 59.5"></strong> — 🎂 set your birth date in ⚙️ Settings</span>
+                    </template>
+                    <template x-if="data.settings.birthDate && isLockedAcct(acc)">
+                      <span>🔒 Until age <strong x-text="retInfo(acc).unlockAge"></strong>
+                        <span class="dim" x-text="`(unlocks ${retInfo(acc).unlockDate}, ${untilLabel(retInfo(acc).daysLeft)})`"></span>
+                      </span>
+                    </template>
+                    <template x-if="data.settings.birthDate && !isLockedAcct(acc)">
+                      <span>🔓 Unlocked — you've reached age <strong x-text="retInfo(acc).unlockAge"></strong>!</span>
+                    </template>
+                  </div>
+                </template>
+
                 <div class="tile-foot">
-                  <span class="chip" x-text="acct.type"></span>
-                  <span class="tile-base" x-show="acct.currency !== baseCurrency">
-                    ≈ <span x-text="baseOf(acct) === null ? '—' : fmtBase(baseOf(acct))"></span>
+                  <span class="chip" x-text="typeLabel(acc)"></span>
+                  <span class="tile-base" x-show="acc.currency !== baseCurrency">
+                    ≈ <span x-text="baseOf(acc) === null ? '—' : fmtBase(baseOf(acc))"></span>
                   </span>
                 </div>
                 <div class="reconcile-row">
                   <span class="rec-badge"
-                    :class="{ ok: reconcileState(acct) === 'ok', warn: reconcileState(acct) === 'check' }"
-                    x-text="reconcileState(acct) === 'ok' ? '✓ reconciled' : (reconcileState(acct) === 'check' ? '⚠ check balance' : 'new')"></span>
-                  <button class="minibtn" @click="openReconcile(acct)">Reconcile ▸</button>
+                    :class="{ ok: reconcileState(acc) === 'ok', warn: reconcileState(acc) === 'check' }"
+                    x-text="reconcileState(acc) === 'ok' ? '✓ reconciled' : (reconcileState(acc) === 'check' ? '⚠ check balance' : 'new')"></span>
+                  <button class="minibtn" @click="openReconcile(acc)">Reconcile ▸</button>
                 </div>
               </div>
             </template>
@@ -265,14 +328,14 @@
         </div>
       </div>
 
-      <div class="empty" x-show="!assetAccounts.length">
+      <div class="empty" x-show="!spendableAssets.length">
         <div class="empty-emoji">🏖️</div>
         <h2>No accounts to fund goals</h2>
         <p>Add a bank or cash account on the Overview page first.</p>
         <button class="btn btn-primary" @click="setView('overview')">Go to Overview</button>
       </div>
 
-      <div x-show="assetAccounts.length && !hasGoals" class="empty">
+      <div x-show="spendableAssets.length && !hasGoals" class="empty">
         <div class="empty-emoji">✨</div>
         <h2>No goals yet</h2>
         <p>Set a goal and watch the bar fill up as you reserve money.</p>
@@ -344,6 +407,26 @@
       <label class="field" x-show="acct.type === 'credit'"><span>Credit limit (optional)</span>
         <input type="number" step="any" x-model="acct.creditLimit" placeholder="e.g. 2000" />
       </label>
+      <div class="field-row" x-show="acct.type === 'savings' || acct.type === 'cd'">
+        <label class="field"><span>Interest rate (APY %)</span>
+          <input type="number" step="any" x-model="acct.interestRate" placeholder="e.g. 4.2" />
+        </label>
+        <label class="field" x-show="acct.type === 'cd'"><span>Matures on</span>
+          <input type="date" x-model="acct.maturityDate" />
+        </label>
+      </div>
+      <label class="field" x-show="acct.type === 'investment'"><span>Total contributed (cost basis, optional)</span>
+        <input type="number" step="any" x-model="acct.costBasis" placeholder="what you put in — shows gain/loss" />
+      </label>
+      <label class="field" x-show="acct.type === 'retirement'"><span>Available from age</span>
+        <input type="number" step="0.5" x-model="acct.unlockAge" placeholder="59.5" />
+      </label>
+      <p class="hint" x-show="acct.type === 'retirement' && !data.settings.birthDate">
+        🎂 Set your birth date in ⚙️ Settings so I can count down to unlock day.
+      </p>
+      <p class="hint" x-show="acct.type === 'cd'">
+        🔒 CD money counts in your net worth but is treated as locked until the maturity date.
+      </p>
       <div class="modal-actions">
         <button class="btn" @click="accountModal = false">Cancel</button>
         <button class="btn btn-primary" @click="saveAccount()">Save</button>
@@ -410,8 +493,12 @@
         We think this account currently holds
         <strong x-text="reconAccount ? fmt(reconAccount.balance, reconAccount.currency) : ''"></strong>
         <span x-show="reconAccount && isCredit(reconAccount)">(owed)</span>.
+      </p>
+
+      <p class="hint">
         Open your bank/card app and type the <strong>real</strong> amount below — we'll log any difference.
       </p>
+
       <label class="field">
         <span x-text="reconAccount && isCredit(reconAccount) ? 'Real amount owed' : 'Real balance'"></span>
         <input type="number" step="any" x-model="recon.actual" @keydown.enter="saveReconcile()" />
@@ -460,7 +547,7 @@
       </div>
       <label class="field"><span>Funded from</span>
         <select x-model="goal.accountId">
-          <template x-for="a in assetAccounts" :key="a.id">
+          <template x-for="a in spendableAssets" :key="a.id">
             <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
           </template>
         </select>
@@ -572,6 +659,10 @@
           </template>
         </div>
       </div>
+      <label class="field"><span>Your birth date 🎂 (only for retirement countdowns — stays on this device)</span>
+        <input type="date" x-model="data.settings.birthDate" @change="persist()" />
+      </label>
+
       <div class="modal-actions">
         <button class="btn" @click="refreshRates()">🔄 Refresh live rates</button>
         <button class="btn btn-primary" @click="settingsOpen = false">Done</button>

@@ -7,18 +7,27 @@ import * as fin from './finance.js';
 import { renderTrend } from './charts.js';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'AUD', 'CHF', 'INR', 'SGD', 'HKD', 'THB', 'MMK'];
-const EMOJIS = ['🏦', '💰', '💵', '🐷', '💳', '🪙', '💎', '🏠', '✈️', '🎁', '📈', '🧧'];
+const EMOJIS = ['🏦', '💰', '💵', '🐷', '💳', '🪙', '💎', '🏠', '✈️', '🎁', '📈', '🧧', '⏳', '🧓', '🌱', '📊'];
 const TYPES = [
   { value: 'bank', label: 'Bank' },
   { value: 'cash', label: 'Cash' },
+  { value: 'savings', label: 'Savings' },
+  { value: 'cd', label: 'CD' },
+  { value: 'investment', label: 'Investment' },
+  { value: 'retirement', label: 'Retirement' },
   { value: 'credit', label: 'Credit card' },
   { value: 'other', label: 'Other' },
 ];
+// A fitting default emoji per type (applied when the user hasn't picked one).
+const TYPE_EMOJI = { bank: '🏦', cash: '💰', savings: '🐷', cd: '⏳', investment: '📈', retirement: '🧓', credit: '💳', other: '🪙' };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 function blankAccount() {
-  return { id: null, name: '', type: 'bank', emoji: '🏦', currency: 'USD', balance: '', creditLimit: '' };
+  return {
+    id: null, name: '', type: 'bank', emoji: '🏦', currency: 'USD', balance: '',
+    creditLimit: '', interestRate: '', maturityDate: '', unlockAge: '', costBasis: '',
+  };
 }
 function blankTx(kind = 'expense') {
   return { id: null, kind, accountId: '', toAccountId: '', amount: '', category: 'Food', date: today(), note: '' };
@@ -163,6 +172,52 @@ document.addEventListener('alpine:init', () => {
     utilization(a) {
       return fin.utilization(a);
     },
+    typeLabel(a) {
+      return TYPES.find((t) => t.value === a.type)?.label || a.type;
+    },
+
+    // ----- savings / CD / investment / retirement -----
+    isLockedAcct(a) {
+      return fin.isLocked(a, this.data.settings, today());
+    },
+    get lockedTotal() {
+      return fin.lockedTotal(this.data, today());
+    },
+    get interestPerYear() {
+      return fin.totalAnnualInterest(this.data);
+    },
+    annualInterest(a) {
+      return fin.annualInterest(a);
+    },
+    gainLoss(a) {
+      return fin.gainLoss(a);
+    },
+    cdInfo(a) {
+      const days = fin.cdDaysToMaturity(a, today());
+      if (days === null) return null;
+      return { days, projected: fin.cdValueAtMaturity(a, today()), matured: days <= 0 };
+    },
+    retInfo(a) {
+      return fin.retirementInfo(a, this.data.settings, today());
+    },
+    // "in 45d" / "in 3.2y" — compact time-until label
+    untilLabel(days) {
+      if (days == null) return '';
+      if (days <= 0) return 'now';
+      return days > 365 ? `in ${(days / 365).toFixed(1)}y` : `in ${days}d`;
+    },
+    lockReason(a) {
+      if (a.type === 'cd') return a.maturityDate ? `until it matures on ${a.maturityDate}` : 'until maturity';
+      if (a.type === 'retirement') {
+        const info = this.retInfo(a);
+        return info?.unlockDate ? `until age ${info.unlockAge} (${info.unlockDate})` : `until age ${a.unlockAge || 59.5}`;
+      }
+      return '';
+    },
+    // Liquid assets only — what savings goals may reserve from (no CDs / retirement).
+    get spendableAssets() {
+      return this.assetAccounts.filter((a) => !this.isLockedAcct(a));
+    },
     accountName(id) {
       return fin.accountById(this.data, id)?.name || '—';
     },
@@ -172,7 +227,15 @@ document.addEventListener('alpine:init', () => {
       this.accountModal = true;
     },
     openEditAccount(account) {
-      this.acct = { ...account, balance: String(account.balance), creditLimit: account.creditLimit != null ? String(account.creditLimit) : '' };
+      this.acct = {
+        ...account,
+        balance: String(account.balance),
+        creditLimit: account.creditLimit != null ? String(account.creditLimit) : '',
+        interestRate: account.interestRate != null ? String(account.interestRate) : '',
+        maturityDate: account.maturityDate || '',
+        unlockAge: account.unlockAge != null ? String(account.unlockAge) : '',
+        costBasis: account.costBasis != null ? String(account.costBasis) : '',
+      };
       this.accountModal = true;
     },
     saveAccount() {
@@ -180,9 +243,25 @@ document.addEventListener('alpine:init', () => {
       if (!name) return this.flash('Give the account a name 🙂');
       const balance = Number(this.acct.balance);
       if (!Number.isFinite(balance)) return this.flash('Balance should be a number');
-      // Auto-pick a fitting emoji when the user left the default and switched to credit.
+      const original = fin.accountById(this.data, this.acct.id);
+      // Converting to/from a credit card flips what the balance MEANS (have ↔ owe) — say so.
+      if (original && original.type !== this.acct.type && Math.abs(balance) > 0.005) {
+        const wasCredit = original.type === 'credit';
+        const nowCredit = this.acct.type === 'credit';
+        if (wasCredit !== nowCredit) {
+          const msg = nowCredit
+            ? `Heads-up: “${name}” becomes a credit card, so its balance of ${balance} now means money you OWE. Continue?`
+            : `Heads-up: “${name}” is no longer a credit card, so its balance of ${balance} now means money you HAVE. Continue?`;
+          if (!confirm(msg)) return;
+        }
+      }
+      // Auto-pick a fitting emoji when the user left the (old) type's default one.
       let emoji = this.acct.emoji;
-      if (this.acct.type === 'credit' && emoji === '🏦') emoji = '💳';
+      if (original && original.type !== this.acct.type && emoji === TYPE_EMOJI[original.type]) {
+        emoji = TYPE_EMOJI[this.acct.type] || emoji; // type changed, emoji was old default → follow
+      } else if (!original && emoji === '🏦' && this.acct.type !== 'bank') {
+        emoji = TYPE_EMOJI[this.acct.type] || emoji; // new account, untouched default
+      }
       const clean = {
         id: this.acct.id || store.newId(),
         name,
@@ -195,6 +274,20 @@ document.addEventListener('alpine:init', () => {
       if (this.acct.type === 'credit') {
         const lim = Number(this.acct.creditLimit);
         clean.creditLimit = Number.isFinite(lim) && lim > 0 ? lim : null;
+      }
+      // type-specific extras (savings/CD/investment/retirement)
+      if (this.acct.type === 'savings' || this.acct.type === 'cd') {
+        const r = Number(this.acct.interestRate);
+        clean.interestRate = Number.isFinite(r) && r > 0 ? r : null;
+      }
+      if (this.acct.type === 'cd') clean.maturityDate = this.acct.maturityDate || null;
+      if (this.acct.type === 'investment') {
+        const b = Number(this.acct.costBasis);
+        clean.costBasis = Number.isFinite(b) && b > 0 ? b : null;
+      }
+      if (this.acct.type === 'retirement') {
+        const a = Number(this.acct.unlockAge);
+        clean.unlockAge = Number.isFinite(a) && a > 0 ? a : 59.5;
       }
       const idx = this.data.accounts.findIndex((a) => a.id === clean.id);
       if (idx >= 0) this.data.accounts[idx] = clean;
@@ -265,6 +358,11 @@ document.addEventListener('alpine:init', () => {
       if (this.tx.kind === 'transfer') {
         if (!this.tx.toAccountId) return this.flash('Pick a destination account');
         if (this.tx.toAccountId === this.tx.accountId) return this.flash('Choose two different accounts');
+      }
+      // Taking money OUT of a locked CD/retirement account deserves a warning, not silence.
+      const fromAcct = fin.accountById(this.data, this.tx.accountId);
+      if ((this.tx.kind === 'expense' || this.tx.kind === 'transfer') && fromAcct && this.isLockedAcct(fromAcct)) {
+        if (!confirm(`🔒 ${fromAcct.name} is locked ${this.lockReason(fromAcct)}. Early withdrawals usually cost penalties — log it anyway?`)) return;
       }
       const clean = {
         id: this.tx.id || store.newId(),
@@ -411,9 +509,9 @@ document.addEventListener('alpine:init', () => {
       return fin.accountById(this.data, goal.accountId)?.currency || this.baseCurrency;
     },
     openAddGoal() {
-      if (!this.assetAccounts.length) return this.flash('Add a bank or cash account first 🙂');
+      if (!this.spendableAssets.length) return this.flash('Add a bank or cash account first 🙂');
       this.goal = blankGoal();
-      this.goal.accountId = this.assetAccounts[0].id;
+      this.goal.accountId = this.spendableAssets[0].id;
       this.goalModal = true;
     },
     openEditGoal(g) {

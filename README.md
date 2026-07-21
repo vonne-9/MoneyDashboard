@@ -69,6 +69,20 @@ Settings, Backup, and Restore live at the bottom of the menu.
   The **Upcoming 🔔** panel shows what's due ("due today", "in 3 days", "overdue"). One tap on **Log ✓**
   records the real transaction and rolls it to the next date — you stay in control, nothing posts silently.
 
+**Savings, CDs, investments & retirement**
+- **Savings** 🐷 — set an **APY** and the tile shows ≈ interest earned per year.
+- **CD** ⏳ — APY plus a **maturity date**: the tile counts down ("matures in 180d"), shows the
+  **≈ projected payout at maturity**, and the money is treated as **🔒 locked** until then.
+- **Investment** 📈 — update the value like any balance; optionally record what you **contributed**
+  (cost basis) to see your **gain/loss** in green/red ($ and %).
+- **Retirement** 🧓 — locked until an **unlock age** (default 59½). Set your **birth date** in
+  ⚙️ Settings (stays on your device) and the tile counts down to the exact unlock date.
+- **Locked money** still counts in your net worth (it's yours!) but shows in a **🔒 Locked** pill on
+  the Overview, can't fund savings goals, and spending/transferring out of a locked account asks
+  for confirmation first (early withdrawals usually mean penalties).
+- The Overview also totals **✨ ≈ interest you're earning per year** across savings & CDs. Interest
+  isn't auto-posted — when the bank actually credits it, **Reconcile ▸** picks it up honestly.
+
 ## Your data & backups
 
 Your data lives in this browser's `localStorage` for this site. That means:
@@ -80,6 +94,3 @@ Your data lives in this browser's `localStorage` for this site. That means:
 - The app shows a gentle **"your last backup was N days ago"** reminder at the top once it's been a
   week (or if you've never backed up), with a one-click **Back up now** or **Later** (snoozes 3 days).
 
-## Coming later
-
-- **Phase 4 (optional)** — automatic read-only sync for US banks via Teller (free) or SimpleFIN (~$15/yr).
