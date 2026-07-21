@@ -175,6 +175,38 @@ document.addEventListener('alpine:init', () => {
     typeLabel(a) {
       return TYPES.find((t) => t.value === a.type)?.label || a.type;
     },
+    // Reorder tiles on the Overview (array order IS the stored order everywhere).
+    moveAccount(account, dir) {
+      const arr = this.data.accounts;
+      const i = arr.findIndex((a) => a.id === account.id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= arr.length) return;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      this.persist();
+    },
+    // Reset tile order: group by account type (same order as the summary strip),
+    // keeping the existing relative order within each type (stable sort).
+    resetAccountOrder() {
+      const idx = (t) => TYPES.findIndex((x) => x.value === t);
+      this.data.accounts.sort((a, b) => idx(a.type) - idx(b.type));
+      this.persist();
+      this.flash('Accounts grouped by type ↩️');
+    },
+    // Totals per account type (in base currency), for the Overview summary strip.
+    get typeSummary() {
+      const groups = [];
+      for (const t of TYPES) {
+        const accs = this.data.accounts.filter((a) => a.type === t.value);
+        if (!accs.length) continue;
+        let total = 0;
+        for (const a of accs) {
+          const v = fx.toBase(Number(a.balance) || 0, a.currency, this.data);
+          if (v != null) total += v;
+        }
+        groups.push({ type: t.value, label: t.label, emoji: TYPE_EMOJI[t.value], count: accs.length, total, isCredit: t.value === 'credit' });
+      }
+      return groups;
+    },
 
     // ----- savings / CD / investment / retirement -----
     isLockedAcct(a) {

@@ -368,6 +368,23 @@ input:focus, select:focus { outline: none; box-shadow: var(--shadow-sm); }
 .gain { color: #1e6b45; }
 .loss { color: #c0392b; }
 
+/* per-type totals strip (Overview) */
+.type-summary { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+.ts-item {
+  display: flex; align-items: center; gap: 8px;
+  border: var(--border); border-radius: 12px; padding: 8px 12px;
+  box-shadow: var(--shadow-sm); background: var(--paper);
+}
+.ts-emoji { font-size: 20px; }
+.ts-info { display: flex; flex-direction: column; line-height: 1.15; }
+.ts-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; opacity: .75; }
+.ts-count { opacity: .6; }
+.ts-total { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+.ts-total.owed { color: #c0392b; }
+
+/* disabled state for tile mini icons (reorder arrows at the ends) */
+.icon:disabled { opacity: .3; cursor: default; }
+
 /* hero: locked pill + interest line */
 .pill-locked { background: #ffd166; }
 .hero-interest { margin-top: 10px; font-weight: 800; font-size: 14px; }

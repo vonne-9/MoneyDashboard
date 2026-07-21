@@ -23,7 +23,9 @@ python3 -m http.server 8777
 
 A **side menu** (left on desktop, a ☰ drawer on mobile) switches between three pages:
 
-- **🏠 Overview** — net worth, your accounts & cards, and the net-worth trend chart.
+- **🏠 Overview** — net worth, a **per-type totals strip** (how much sits in banks, savings, CDs, …),
+  your accounts & cards (reorder tiles with the **◀ ▶** buttons that appear on hover, or
+  **↩️ Reset order** to group them by type), and the net-worth trend chart.
 - **💸 Spending** — log expenses/income/transfers, monthly budgets, upcoming recurring items, recent
   activity, and Excel export:
   - **📊 Export Excel** — downloads a real `.xlsx` workbook of your expenses, with an **All expenses**

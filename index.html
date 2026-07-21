@@ -84,6 +84,21 @@
         <button class="btn btn-primary" @click="openAddAccount()">🏦 Add account</button>
         <button class="btn" @click="openAddTx('transfer')" :disabled="data.accounts.length < 2">🔁 Transfer</button>
         <button class="btn" @click="saveSnapshot()" :disabled="!hasAccounts">📸 Snapshot</button>
+        <button class="btn" @click="resetAccountOrder()" x-show="data.accounts.length > 1" title="Group tiles by account type">↩️ Reset order</button>
+      </div>
+
+      <!-- per-type totals -->
+      <div class="type-summary" x-show="hasAccounts">
+        <template x-for="g in typeSummary" :key="g.type">
+          <div class="ts-item" :class="g.isCredit ? 'tint-credit' : 'tint-' + g.type">
+            <span class="ts-emoji" x-text="g.emoji"></span>
+            <div class="ts-info">
+              <span class="ts-label"><span x-text="g.label"></span><span class="ts-count" x-show="g.count > 1" x-text="' ×' + g.count"></span></span>
+              <span class="ts-total" :class="{ owed: g.isCredit && g.total > 0 }"
+                x-text="(g.isCredit && g.total > 0 ? '−' : '') + fmtBase(Math.abs(g.total))"></span>
+            </div>
+          </div>
+        </template>
       </div>
 
       <div class="empty" x-show="!hasAccounts">
@@ -99,6 +114,8 @@
             <div class="tile-top">
               <span class="tile-emoji" x-text="acc.emoji"></span>
               <div class="tile-menu">
+                <button class="icon" @click="moveAccount(acc, -1)" :disabled="data.accounts[0]?.id === acc.id" title="Move left">◀</button>
+                <button class="icon" @click="moveAccount(acc, 1)" :disabled="data.accounts.at(-1)?.id === acc.id" title="Move right">▶</button>
                 <button class="icon" @click="openEditAccount(acc)" title="Edit">✏️</button>
                 <button class="icon" @click="deleteAccount(acc)" title="Delete">🗑️</button>
               </div>
