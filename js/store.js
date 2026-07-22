@@ -2,7 +2,7 @@
 // Everything the dashboard knows lives in one JSON blob under a single key.
 
 const STORAGE_KEY = 'money-dashboard-v1';
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 // Cute default spending categories (Phase 2). Users can add their own later.
 export const DEFAULT_CATEGORIES = [
@@ -29,6 +29,14 @@ function defaultData() {
       manualRates: {},
       // Used only for retirement-account unlock countdowns; never leaves this device.
       birthDate: '',
+      // AI insights: any OpenAI-compatible endpoint. The key lives ONLY in this
+      // browser's localStorage (and inside your JSON backups).
+      ai: {
+        preset: 'gemini',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        apiKey: '',
+        model: 'gemini-3.6-flash',
+      },
     },
     fxCache: null, // { base, rates: {CODE: rate}, fetchedAt }
     // accounts: { id, name, type: bank|cash|savings|cd|investment|retirement|credit|other,
@@ -59,6 +67,8 @@ function migrate(raw) {
   const merged = { ...base, ...raw };
   merged.settings = { ...base.settings, ...(raw.settings || {}) };
   merged.settings.manualRates = { ...(raw.settings?.manualRates || {}) };
+  // v5 → v6: AI-insights endpoint config
+  merged.settings.ai = { ...base.settings.ai, ...(raw.settings?.ai || {}) };
 
   // v1 → v2: budgets was a (never-used) array; categories didn't exist.
   if (Array.isArray(raw.budgets) || raw.budgets == null) merged.budgets = {};

@@ -388,6 +388,66 @@
       </div>
     </section>
 
+    <!-- ============ INSIGHTS ============ -->
+    <section x-show="view === 'insights'">
+      <div class="page-head">
+        <h2>Insights 💡</h2>
+        <div class="insight-chips" x-show="insights.length">
+          <span class="chip-count warn" x-show="insightCounts.warn">⚠️ <span x-text="insightCounts.warn"></span></span>
+          <span class="chip-count info" x-show="insightCounts.info">💡 <span x-text="insightCounts.info"></span></span>
+          <span class="chip-count win" x-show="insightCounts.win">✅ <span x-text="insightCounts.win"></span></span>
+        </div>
+      </div>
+
+      <div class="disclaimer">
+        🎓 These are <strong>educational observations</strong> computed from your own numbers — friendly rules of thumb, not financial advice.
+      </div>
+
+      <div class="empty" x-show="!hasAccounts">
+        <div class="empty-emoji">🐣</div>
+        <h2>Insights hatch from data</h2>
+        <p>Add accounts and log some spending — smart little cards will appear here.</p>
+        <button class="btn btn-primary" @click="setView('overview')">Go to Overview</button>
+      </div>
+
+      <div class="insight-grid" x-show="hasAccounts">
+        <template x-for="i in insights" :key="i.id">
+          <article class="insight-card" :class="'sev-' + i.severity">
+            <div class="insight-head">
+              <span class="insight-emoji" x-text="i.emoji"></span>
+              <span class="insight-sev" :class="i.severity" x-text="sevMeta(i.severity).emoji + ' ' + sevMeta(i.severity).label"></span>
+            </div>
+            <div class="insight-title" x-text="i.title"></div>
+            <p class="insight-msg" x-text="i.message"></p>
+            <details class="why">
+              <summary>Why this matters 🎓</summary>
+              <p x-text="i.blurb"></p>
+            </details>
+          </article>
+        </template>
+      </div>
+
+      <section class="card ai-panel" x-show="hasAccounts">
+        <div class="card-head">
+          <h3>AI deep-dive 🤖</h3>
+          <span class="chip" x-show="aiConfigured" x-text="aiSettings.model"></span>
+        </div>
+        <p class="hint">
+          Optional — everything above works offline. Clicking the button sends your
+          <strong>full data</strong> (accounts, balances, transactions &amp; notes) from this browser
+          straight to <strong x-text="aiHost"></strong> using your own API key.
+        </p>
+        <div class="actions" style="margin-bottom: 0;">
+          <button class="btn btn-primary" x-show="aiConfigured" :disabled="aiBusy" @click="runAI()"
+            x-text="aiBusy ? '🔮 Thinking…' : '🤖 Analyze with AI'"></button>
+          <button class="btn" x-show="!aiConfigured" @click="settingsOpen = true">⚙️ Set up AI first</button>
+        </div>
+        <div class="hero-warn" x-show="aiError" style="margin-top: 12px;">⚠️ <span x-text="aiError"></span></div>
+        <div class="ai-output" x-show="aiHtml" x-html="aiHtml"></div>
+        <p class="hint" x-show="aiHtml" style="margin-top: 10px;">🎓 Educational info, not financial advice.</p>
+      </section>
+    </section>
+
     <footer class="footer">Everything is saved on this computer. Back up now &amp; then. 🧸</footer>
   </main>
 
@@ -679,6 +739,33 @@
       <label class="field"><span>Your birth date 🎂 (only for retirement countdowns — stays on this device)</span>
         <input type="date" x-model="data.settings.birthDate" @change="persist()" />
       </label>
+
+      <div class="field"><span>AI insights 🤖 (optional)</span>
+        <p class="hint">
+          Powers the "Analyze with AI" button on 💡 Insights. Works with any OpenAI-compatible API —
+          pick a preset below. Your key is stored <strong>only in this browser</strong> (and inside
+          your JSON backups); data goes straight from your browser to the provider.
+        </p>
+        <label class="field"><span>Provider preset</span>
+          <select :value="aiSettings.preset" @change="applyAiPreset($event.target.value)">
+            <template x-for="p in aiPresets" :key="p.id">
+              <option :value="p.id" x-text="p.label"></option>
+            </template>
+          </select>
+        </label>
+        <div class="field-row">
+          <label class="field"><span>Base URL</span>
+            <input type="text" x-model="aiSettings.baseUrl" @change="persist()" placeholder="https://…/v1" />
+          </label>
+          <label class="field"><span>Model</span>
+            <input type="text" x-model="aiSettings.model" @change="persist()" placeholder="model name" />
+          </label>
+        </div>
+        <label class="field"><span>API key</span>
+          <input type="password" x-model="aiSettings.apiKey" @change="persist()" placeholder="paste your key" />
+        </label>
+        <p class="hint" x-text="aiKeyHint"></p>
+      </div>
 
       <div class="modal-actions">
         <button class="btn" @click="refreshRates()">🔄 Refresh live rates</button>

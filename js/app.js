@@ -4,6 +4,8 @@
 import * as store from './store.js';
 import * as fx from './fx.js';
 import * as fin from './finance.js';
+import * as insightsEngine from './insights.js';
+import * as ai from './ai.js';
 import { renderTrend } from './charts.js';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'AUD', 'CHF', 'INR', 'SGD', 'HKD', 'THB', 'MMK'];
@@ -74,9 +76,12 @@ document.addEventListener('alpine:init', () => {
     emojis: EMOJIS,
     types: TYPES,
     fxStatus: 'loading',
-    view: 'overview', // overview | spending | goals
+    view: 'overview', // overview | spending | goals | insights
     sidebarOpen: false,
     backupDismissed: false,
+    aiBusy: false,
+    aiHtml: '', // rendered AI result (memory only — never persisted)
+    aiError: '',
     accountModal: false,
     txModal: false,
     reconcileModal: false,
@@ -118,6 +123,7 @@ document.addEventListener('alpine:init', () => {
         { id: 'overview', label: 'Overview', emoji: '🏠' },
         { id: 'spending', label: 'Spending', emoji: '💸' },
         { id: 'goals', label: 'Goals', emoji: '🎯' },
+        { id: 'insights', label: 'Insights', emoji: '💡' },
       ];
     },
 
@@ -700,6 +706,59 @@ document.addEventListener('alpine:init', () => {
       item.nextDate = fin.addCadence(item.nextDate, item.cadence);
       this.persist();
       this.flash(`Skipped to ${item.nextDate}`);
+    },
+
+    // ================= insights (rules engine) + AI deep-dive =================
+    get insights() {
+      return insightsEngine.buildInsights(this.data, today(), (n) => this.fmtBase(n));
+    },
+    get insightCounts() {
+      const c = { warn: 0, info: 0, win: 0 };
+      for (const i of this.insights) c[i.severity] += 1;
+      return c;
+    },
+    sevMeta(sev) {
+      return { warn: { emoji: '⚠️', label: 'heads-up' }, info: { emoji: '💡', label: 'good to know' }, win: { emoji: '✅', label: 'win' } }[sev];
+    },
+    get aiSettings() {
+      return this.data.settings.ai;
+    },
+    get aiPresets() {
+      return ai.AI_PRESETS;
+    },
+    get aiKeyHint() {
+      return ai.AI_PRESETS.find((p) => p.id === this.aiSettings.preset)?.keyHint || '';
+    },
+    get aiConfigured() {
+      const s = this.aiSettings;
+      return !!(s.baseUrl && s.model && (s.apiKey || s.baseUrl.includes('localhost')));
+    },
+    get aiHost() {
+      try { return new URL(this.aiSettings.baseUrl).host; } catch { return 'the AI provider'; }
+    },
+    applyAiPreset(id) {
+      const p = ai.AI_PRESETS.find((x) => x.id === id);
+      if (!p) return;
+      this.aiSettings.preset = id;
+      if (p.baseUrl) this.aiSettings.baseUrl = p.baseUrl;
+      if (p.model) this.aiSettings.model = p.model;
+      this.persist(); // key is deliberately kept
+    },
+    async runAI() {
+      if (this.aiBusy || !this.aiConfigured) return;
+      this.aiError = '';
+      this.aiBusy = true;
+      try {
+        const res = await ai.analyze(this.aiSettings, ai.buildMessages(this.data, today()));
+        if (res.ok) {
+          this.aiHtml = ai.renderMarkdownLite(res.text);
+          this.flash('Fresh AI insights ✨');
+        } else {
+          this.aiError = res.error;
+        }
+      } finally {
+        this.aiBusy = false;
+      }
     },
 
     // ================= snapshots + chart =================

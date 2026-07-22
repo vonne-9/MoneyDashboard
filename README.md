@@ -19,9 +19,13 @@ python3 -m http.server 8777
 
 > A local server is used (instead of just opening the file) so live exchange rates load correctly.
 
+**Or use the hosted copy:** https://vonne-9.github.io/MoneyDashboard/ works on any device (phone
+included). Note each browser keeps its **own** separate data — move data between devices with
+💾 Backup / 📥 Restore.
+
 ## Getting around
 
-A **side menu** (left on desktop, a ☰ drawer on mobile) switches between three pages:
+A **side menu** (left on desktop, a ☰ drawer on mobile) switches between four pages:
 
 - **🏠 Overview** — net worth, a **per-type totals strip** (how much sits in banks, savings, CDs, …),
   your accounts & cards (reorder tiles with the **◀ ▶** buttons that appear on hover, or
@@ -34,6 +38,8 @@ A **side menu** (left on desktop, a ☰ drawer on mobile) switches between three
     Difference, and an **OK / OVER** status). The tables are styled for readability: **zebra-striped**
     rows, and the **Difference** column is green when under budget / red when over.
 - **🎯 Goals** — your savings goals.
+- **💡 Insights** — financial-literacy health checks computed from your own numbers, plus an
+  optional AI deep-dive.
 
 Settings, Backup, and Restore live at the bottom of the menu.
 
@@ -84,6 +90,21 @@ Settings, Backup, and Restore live at the bottom of the menu.
   for confirmation first (early withdrawals usually mean penalties).
 - The Overview also totals **✨ ≈ interest you're earning per year** across savings & CDs. Interest
   isn't auto-posted — when the bank actually credits it, **Reconcile ▸** picks it up honestly.
+
+**Insights & AI 💡**
+- **Rules engine (always on, offline, private):** cute cards computed locally from your data —
+  emergency-fund coverage, credit utilization vs the 30% guideline, budget overruns, savings rate
+  (50/30/20), idle cash at 0%, CDs about to mature, cards carrying a balance (interest cost),
+  subscription totals, net-worth trend, goal cheers, retirement check, stale reconciles. Each card
+  has a "Why this matters 🎓" explainer. **Educational observations, not financial advice.**
+- **AI deep-dive (optional):** the **🤖 Analyze with AI** button sends your full data from your
+  browser straight to an AI provider *you* configure and returns strengths / watch-outs / suggested
+  next steps. Works with any OpenAI-compatible API — presets included:
+  - **Google Gemini** (recommended: free tier, ~1,500 requests/day, no card) — get a key at
+    **aistudio.google.com/apikey**, then ⚙️ Settings → AI insights → paste it. Done.
+  - OpenRouter, Groq, OpenAI, or **Ollama** running on your own computer (fully private; local runs only).
+  - Your key is stored only in this browser (and inside your JSON backups). Nothing is sent anywhere
+    until you click the button.
 
 ## Your data & backups
 

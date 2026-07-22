@@ -257,6 +257,69 @@ input:focus, select:focus { outline: none; box-shadow: var(--shadow-sm); }
 
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
+/* ============================================================
+   Insights — literacy rule cards + AI deep-dive
+   ============================================================ */
+
+.disclaimer {
+  background: var(--lilac); border: var(--border); border-radius: 14px;
+  box-shadow: var(--shadow-sm); padding: 12px 16px; margin-bottom: 20px;
+  font-weight: 700; font-size: 14px;
+}
+
+.insight-chips { display: flex; gap: 8px; }
+.chip-count {
+  border: var(--border); border-radius: 999px; padding: 4px 12px;
+  font-weight: 800; font-size: 13px; background: var(--paper); box-shadow: var(--shadow-sm);
+}
+.chip-count.warn { background: var(--coral); }
+.chip-count.info { background: var(--sky); }
+.chip-count.win { background: var(--mint); }
+
+.insight-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 18px; margin-bottom: 26px;
+}
+.insight-card {
+  background: var(--paper); border: var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px;
+}
+.insight-card.sev-warn { background: #ffd0d0; }
+.insight-card.sev-info { background: var(--sky); }
+.insight-card.sev-win { background: var(--mint); }
+.insight-head { display: flex; justify-content: space-between; align-items: center; }
+.insight-emoji {
+  font-size: 26px; background: var(--paper); border: var(--border);
+  border-radius: 10px; padding: 2px 7px; box-shadow: var(--shadow-sm);
+}
+.insight-sev {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+  border: 2px solid var(--ink); border-radius: 999px; padding: 3px 9px; background: var(--paper);
+}
+.insight-title { font-family: var(--font-display); font-weight: 600; font-size: 17px; margin: 10px 0 4px; }
+.insight-msg { font-weight: 700; font-size: 14px; margin: 0; line-height: 1.45; }
+.insight-card .why { margin-top: 10px; border-top: 2px dashed rgba(17,17,17,.25); padding-top: 8px; }
+.insight-card .why summary {
+  font-family: var(--font-display); font-weight: 600; font-size: 13px; cursor: pointer;
+}
+.insight-card .why p { font-size: 13px; font-weight: 600; line-height: 1.5; margin: 6px 0 0; }
+
+/* AI panel + rendered output */
+.ai-panel { margin-bottom: 22px; }
+.ai-output {
+  background: #fffdf8; border: var(--border); border-radius: 14px;
+  box-shadow: var(--shadow-sm); padding: 16px 18px; margin-top: 14px;
+}
+.ai-output h3 {
+  font-size: 18px; margin: 14px 0 8px; padding-bottom: 4px;
+  border-bottom: 2px dashed rgba(17,17,17,.2);
+}
+.ai-output h3:first-child { margin-top: 0; }
+.ai-output h4 { font-size: 15px; margin: 10px 0 6px; }
+.ai-output p { font-weight: 600; font-size: 14px; line-height: 1.55; margin: 8px 0; }
+.ai-output ul, .ai-output ol { margin: 8px 0; padding-left: 22px; }
+.ai-output li { font-weight: 600; font-size: 14px; line-height: 1.55; margin: 4px 0; }
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
