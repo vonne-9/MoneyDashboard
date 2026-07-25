@@ -84,12 +84,19 @@ export function availableOf(account, data) {
 }
 
 // --- Recurring item date helpers ---
+
+// Format a Date as YYYY-MM-DD in the user's LOCAL timezone. (toISOString() uses
+// UTC, which flips the calendar day for part of the day in most timezones.)
+export function toLocalYMD(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function addCadence(dateStr, cadence) {
   const d = new Date(dateStr + 'T00:00:00');
   if (cadence === 'weekly') d.setDate(d.getDate() + 7);
   else if (cadence === 'yearly') d.setFullYear(d.getFullYear() + 1);
   else d.setMonth(d.getMonth() + 1); // monthly (default)
-  return d.toISOString().slice(0, 10);
+  return toLocalYMD(d);
 }
 
 export function daysUntil(dateStr, todayStr) {
@@ -118,7 +125,7 @@ export function retirementInfo(account, settings, todayStr) {
   const d = new Date(b);
   d.setFullYear(b.getFullYear() + whole);
   d.setMonth(d.getMonth() + months);
-  const unlockDate = d.toISOString().slice(0, 10);
+  const unlockDate = toLocalYMD(d);
   return { unlockAge, unlockDate, daysLeft: daysUntil(unlockDate, todayStr) };
 }
 

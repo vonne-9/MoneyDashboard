@@ -64,6 +64,9 @@ Settings, Backup, and Restore live at the bottom of the menu.
   can track a **credit limit** with an availability/utilization bar.
 - **Categories & monthly budgets** — tag spending, set monthly limits per category (in **🎯 Budgets**),
   and watch the bars fill — they flag when you go **over**.
+- **Your own categories** — **🏷️ Categories** (on the Spending page) lets you add new categories
+  (name + emoji), rename them (all logged history, recurring items, and budgets follow along), or
+  delete them (logged items move to "Other"). Income and Adjustment are built-in and stay put.
 - **Reconcile / verify** — each account keeps a running balance from what you log. Now and then hit
   **Reconcile ▸**, type in the *real* balance from your bank/card app, and it flags & logs any
   difference so you catch anything you forgot to record.

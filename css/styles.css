@@ -320,6 +320,20 @@ input:focus, select:focus { outline: none; box-shadow: var(--shadow-sm); }
 .ai-output ul, .ai-output ol { margin: 8px 0; padding-left: 22px; }
 .ai-output li { font-weight: 600; font-size: 14px; line-height: 1.55; margin: 4px 0; }
 
+/* ---------- Categories modal ---------- */
+.cat-list { max-height: 240px; }
+.cat-name { flex: 1; min-width: 0; font-weight: 800; font-size: 14px; }
+.cat-actions { display: flex; gap: 4px; align-items: center; }
+.minibtn.danger { background: var(--coral); }
+.mini-note { font-size: 11px; font-weight: 700; opacity: .55; }
+.cat-form {
+  border-top: 2px dashed rgba(17, 17, 17, .2);
+  margin-top: 14px; padding-top: 12px;
+}
+.cat-form-title { font-family: var(--font-display); font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px; }
+.cat-emoji-field { flex: 0 0 90px; }
+.cat-form .modal-actions { margin-top: 10px; }
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);

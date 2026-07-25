@@ -50,7 +50,9 @@ export function buildPayload(data, todayStr) {
   const util = insights.overallUtilization(data);
 
   // transactions: last 180 days, newest first, hard cap 300 rows
-  const cutoff = new Date(new Date(todayStr + 'T00:00:00').getTime() - 180 * 86400000).toISOString().slice(0, 10);
+  const cutoffDate = new Date(todayStr + 'T00:00:00');
+  cutoffDate.setDate(cutoffDate.getDate() - 180);
+  const cutoff = fin.toLocalYMD(cutoffDate);
   const recent = data.transactions
     .filter((t) => t.date >= cutoff)
     .sort((a, b) => b.date.localeCompare(a.date));

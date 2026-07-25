@@ -23,7 +23,9 @@ const TYPES = [
 // A fitting default emoji per type (applied when the user hasn't picked one).
 const TYPE_EMOJI = { bank: '🏦', cash: '💰', savings: '🐷', cd: '⏳', investment: '📈', retirement: '🧓', credit: '💳', other: '🪙' };
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Local-timezone "today" — toISOString() would give the UTC date, which already
+// says *tomorrow* during US evenings (days would roll over at ~5–8 PM).
+const today = () => fin.toLocalYMD(new Date());
 
 function blankAccount() {
   return {
@@ -86,6 +88,9 @@ document.addEventListener('alpine:init', () => {
     txModal: false,
     reconcileModal: false,
     budgetsModal: false,
+    categoriesModal: false,
+    catDraft: { originalName: null, name: '', emoji: '🏷️' },
+    catDeletePending: null, // category name armed for delete (in-modal confirm)
     settingsOpen: false,
     goalModal: false,
     contributeModal: false,
@@ -351,6 +356,94 @@ document.addEventListener('alpine:init', () => {
     categoryEmoji(name) {
       return this.data.categories.find((c) => c.name === name)?.emoji || '➕';
     },
+
+    // ================= category management =================
+    // Income & Adjustment are wired into app logic (income defaults, reconcile
+    // drift, insights math) — they can't be renamed or deleted.
+    PROTECTED_CATEGORIES: ['Income', 'Adjustment'],
+    isProtectedCategory(name) {
+      return this.PROTECTED_CATEGORIES.includes(name);
+    },
+    // First everyday category — used as the default for new expenses.
+    get defaultExpenseCategory() {
+      return this.data.categories.find((c) => !this.isProtectedCategory(c.name))?.name || 'Other';
+    },
+    categoryUseCount(name) {
+      return (
+        this.data.transactions.filter((t) => t.category === name).length +
+        this.data.recurring.filter((r) => r.category === name).length
+      );
+    },
+    openAddCategory() {
+      this.catDraft = { originalName: null, name: '', emoji: '🏷️' };
+      this.catDeletePending = null;
+    },
+    openEditCategory(cat) {
+      if (this.isProtectedCategory(cat.name)) return;
+      this.catDraft = { originalName: cat.name, name: cat.name, emoji: cat.emoji };
+    },
+    saveCategory() {
+      const name = this.catDraft.name.trim();
+      const emoji = (this.catDraft.emoji || '🏷️').trim() || '🏷️';
+      if (!name) return this.flash('Give the category a name 🙂');
+      if (this.isProtectedCategory(name) && name !== this.catDraft.originalName) {
+        return this.flash(`“${name}” is a built-in category`);
+      }
+      const clash = this.data.categories.find(
+        (c) => c.name.toLowerCase() === name.toLowerCase() && c.name !== this.catDraft.originalName
+      );
+      if (clash) return this.flash(`“${clash.name}” already exists`);
+
+      if (this.catDraft.originalName === null) {
+        // new category — keep the special ones (Income/Adjustment/Other) at the end
+        const at = this.data.categories.findIndex((c) => c.name === 'Income');
+        const entry = { name, emoji };
+        if (at >= 0) this.data.categories.splice(at, 0, entry);
+        else this.data.categories.push(entry);
+        this.flash(`Added ${emoji} ${name}`);
+      } else {
+        const cat = this.data.categories.find((c) => c.name === this.catDraft.originalName);
+        if (!cat) return;
+        const oldName = cat.name;
+        cat.name = name;
+        cat.emoji = emoji;
+        if (oldName !== name) {
+          // the name IS the reference everywhere — carry history along
+          this.data.transactions.forEach((t) => { if (t.category === oldName) t.category = name; });
+          this.data.recurring.forEach((r) => { if (r.category === oldName) r.category = name; });
+          if (this.data.budgets[oldName] != null) {
+            this.data.budgets[name] = this.data.budgets[oldName];
+            delete this.data.budgets[oldName];
+          }
+        }
+        this.flash(`Updated ${emoji} ${name}`);
+      }
+      this.persist();
+      this.openAddCategory(); // reset the form
+    },
+    // First tap on 🗑️ arms the row; the confirmation happens IN the modal
+    // (native confirm() dialogs get silently suppressed in some browsers).
+    deleteCategory(cat) {
+      if (this.isProtectedCategory(cat.name)) return;
+      this.catDeletePending = cat.name;
+    },
+    confirmDeleteCategory(cat) {
+      if (this.isProtectedCategory(cat.name)) return;
+      this.catDeletePending = null;
+      const used = this.categoryUseCount(cat.name);
+      if (used) {
+        // make sure a landing spot exists
+        if (!this.data.categories.some((c) => c.name === 'Other')) {
+          this.data.categories.push({ name: 'Other', emoji: '➕' });
+        }
+        this.data.transactions.forEach((t) => { if (t.category === cat.name) t.category = 'Other'; });
+        this.data.recurring.forEach((r) => { if (r.category === cat.name) r.category = 'Other'; });
+      }
+      delete this.data.budgets[cat.name];
+      this.data.categories = this.data.categories.filter((c) => c.name !== cat.name);
+      if (this.catDraft.originalName === cat.name) this.openAddCategory();
+      this.persist();
+    },
     get recentTx() {
       return [...this.data.transactions]
         .sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt))
@@ -360,6 +453,7 @@ document.addEventListener('alpine:init', () => {
       if (!this.hasAccounts) return this.flash('Add an account first 🙂');
       this.tx = blankTx(kind);
       this.tx.accountId = this.data.accounts[0].id;
+      if (kind === 'expense') this.tx.category = this.defaultExpenseCategory;
       if (kind === 'income') this.tx.category = 'Income';
       if (kind === 'transfer') {
         this.tx.accountId = (this.assetAccounts[0] || this.data.accounts[0]).id;
@@ -380,8 +474,8 @@ document.addEventListener('alpine:init', () => {
     },
     setTxKind(kind) {
       this.tx.kind = kind;
-      if (kind === 'income' && (!this.tx.category || this.tx.category === 'Food')) this.tx.category = 'Income';
-      if (kind === 'expense' && this.tx.category === 'Income') this.tx.category = 'Food';
+      if (kind === 'income' && (!this.tx.category || this.tx.category === this.defaultExpenseCategory)) this.tx.category = 'Income';
+      if (kind === 'expense' && this.tx.category === 'Income') this.tx.category = this.defaultExpenseCategory;
       if (kind === 'transfer') {
         if (!this.tx.accountId) this.tx.accountId = (this.assetAccounts[0] || this.data.accounts[0])?.id || '';
         if (!this.tx.toAccountId || this.tx.toAccountId === this.tx.accountId) {
@@ -631,10 +725,15 @@ document.addEventListener('alpine:init', () => {
     recCurrency(item) {
       return fin.accountById(this.data, item.accountId)?.currency || this.baseCurrency;
     },
+    // recurring items default to Bills when it exists, else the first everyday category
+    get defaultRecurringCategory() {
+      return this.data.categories.some((c) => c.name === 'Bills') ? 'Bills' : this.defaultExpenseCategory;
+    },
     openAddRecurring() {
       if (!this.hasAccounts) return this.flash('Add an account first 🙂');
       this.rec = blankRecurring();
       this.rec.accountId = this.data.accounts[0].id;
+      this.rec.category = this.defaultRecurringCategory;
       this.recurringModal = true;
     },
     openEditRecurring(item) {
@@ -643,8 +742,8 @@ document.addEventListener('alpine:init', () => {
     },
     setRecKind(kind) {
       this.rec.kind = kind;
-      if (kind === 'income' && (!this.rec.category || this.rec.category === 'Bills')) this.rec.category = 'Income';
-      if (kind === 'expense' && this.rec.category === 'Income') this.rec.category = 'Bills';
+      if (kind === 'income' && (!this.rec.category || this.rec.category === this.defaultRecurringCategory)) this.rec.category = 'Income';
+      if (kind === 'expense' && this.rec.category === 'Income') this.rec.category = this.defaultRecurringCategory;
       if (kind === 'transfer' && (!this.rec.toAccountId || this.rec.toAccountId === this.rec.accountId)) {
         this.rec.toAccountId = this.data.accounts.find((a) => a.id !== this.rec.accountId)?.id || '';
       }

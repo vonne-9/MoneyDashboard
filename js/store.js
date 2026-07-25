@@ -117,7 +117,9 @@ export function newId() {
 export function exportJSON(data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  const stamp = new Date().toISOString().slice(0, 10);
+  // local date, not UTC — evening backups should carry today's date
+  const d = new Date();
+  const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const a = document.createElement('a');
   a.href = url;
   a.download = `money-dashboard-backup-${stamp}.json`;

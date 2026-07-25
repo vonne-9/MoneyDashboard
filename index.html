@@ -240,6 +240,7 @@
         <div class="actions">
           <button class="btn btn-primary" @click="openAddTx('expense')" :disabled="!hasAccounts">＋ Log spending</button>
           <button class="btn" @click="budgetsModal = true">🎯 Budgets</button>
+          <button class="btn" @click="openAddCategory(); categoriesModal = true">🏷️ Categories</button>
           <button class="btn" @click="exportExpensesXLSX()" title="Export expenses to a new Excel workbook (a tab per month)">📊 Export Excel</button>
         </div>
       </div>
@@ -604,6 +605,62 @@
       </div>
       <div class="modal-actions">
         <button class="btn btn-primary" @click="budgetsModal = false">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Categories modal ===== -->
+  <div class="overlay" x-show="categoriesModal" @click.self="categoriesModal = false" x-cloak>
+    <div class="modal">
+      <h3>Categories 🏷️</h3>
+      <p class="hint">Rename or delete your own categories — logged spending follows along. 🔒 ones are built-in.</p>
+
+      <div class="rate-list cat-list">
+        <template x-for="c in categories" :key="c.name">
+          <div class="rate-row">
+            <span class="cat-name">
+              <span x-text="c.emoji"></span> <span x-text="c.name"></span>
+              <span class="mini-note" x-show="categoryUseCount(c.name)" x-text="`· ${categoryUseCount(c.name)} logged`"></span>
+            </span>
+            <span class="cat-actions" x-show="!isProtectedCategory(c.name) && catDeletePending !== c.name">
+              <button class="icon" @click="openEditCategory(c)" title="Rename / change emoji">✏️</button>
+              <button class="icon" @click="deleteCategory(c)" title="Delete">🗑️</button>
+            </span>
+            <span class="cat-actions" x-show="catDeletePending === c.name">
+              <span class="mini-note" x-show="categoryUseCount(c.name)"
+                x-text="`${categoryUseCount(c.name)} logged → Other`"></span>
+              <button class="minibtn danger" @click="confirmDeleteCategory(c)">Delete ✓</button>
+              <button class="icon" @click="catDeletePending = null" title="Keep it">✕</button>
+            </span>
+            <span class="mini-note" x-show="isProtectedCategory(c.name)" title="Built-in — the app's logic uses this one">🔒</span>
+          </div>
+        </template>
+      </div>
+
+      <div class="cat-form">
+        <span class="cat-form-title"
+          x-text="catDraft.originalName ? `Editing “${catDraft.originalName}”` : 'Add a new category'"></span>
+        <div class="field-row">
+          <label class="field cat-emoji-field"><span>Emoji</span>
+            <input type="text" x-model="catDraft.emoji" maxlength="4" />
+          </label>
+          <label class="field"><span>Name</span>
+            <input type="text" x-model="catDraft.name" placeholder="e.g. Pets" @keydown.enter="saveCategory()" />
+          </label>
+        </div>
+        <div class="emoji-grid">
+          <template x-for="e in ['🐾','☕','👶','📚','🎮','💄','🧘','🛠️','🎁','🚌','🍺','🏷️']" :key="e">
+            <button type="button" class="emoji-opt" :class="{ picked: catDraft.emoji === e }" @click="catDraft.emoji = e" x-text="e"></button>
+          </template>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" x-show="catDraft.originalName" @click="openAddCategory()">Cancel edit</button>
+          <button class="btn btn-primary" @click="saveCategory()" x-text="catDraft.originalName ? 'Save changes' : '＋ Add category'"></button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-primary" @click="categoriesModal = false">Done</button>
       </div>
     </div>
   </div>
