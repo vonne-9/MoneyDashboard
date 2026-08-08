@@ -311,7 +311,31 @@
           <h3>Recent activity</h3>
           <button class="btn btn-primary btn-sm" @click="openAddTx('expense')">＋ Add</button>
         </div>
-        <div x-show="!recentTx.length" class="muted">Nothing logged yet. Tap “Add” to record your first expense.</div>
+        <!-- filters: account / category / keyword -->
+        <div class="tx-filters">
+          <input class="tx-search" type="search" x-model="txFilter.q" placeholder="🔍 Search notes, amounts, dates…" />
+          <select x-model="txFilter.accountId">
+            <option value="">All accounts</option>
+            <template x-for="a in data.accounts" :key="a.id">
+              <option :value="a.id" x-text="`${a.emoji} ${a.name}`"></option>
+            </template>
+          </select>
+          <select x-model="txFilter.category">
+            <option value="">All categories</option>
+            <template x-for="c in categories" :key="c.name">
+              <option :value="c.name" x-text="`${c.emoji} ${c.name}`"></option>
+            </template>
+          </select>
+          <button class="minibtn" x-show="txFilterActive" @click="clearTxFilter()">✕ Clear</button>
+        </div>
+        <div class="filter-summary" x-show="txFilterActive">
+          <span x-text="`${filteredTotals.count} match${filteredTotals.count === 1 ? '' : 'es'}`"></span>
+          <span x-show="filteredTotals.expense > 0">· spent <strong x-text="fmtBase(filteredTotals.expense)"></strong></span>
+          <span x-show="filteredTotals.income > 0">· in <strong x-text="fmtBase(filteredTotals.income)"></strong></span>
+        </div>
+
+        <div x-show="!recentTx.length && !txFilterActive" class="muted">Nothing logged yet. Tap “Add” to record your first expense.</div>
+        <div x-show="!recentTx.length && txFilterActive" class="muted">No entries match those filters 🔍 — try clearing them.</div>
         <template x-for="t in recentTx" :key="t.id">
           <div class="tx">
             <div class="tx-left">
@@ -326,7 +350,11 @@
               </div>
             </div>
             <div class="tx-right">
-              <span class="tx-val" :class="t.kind" x-text="txSign(t) + fmt(t.amount, txCurrency(t))"></span>
+              <div class="tx-amounts">
+                <span class="tx-val" :class="t.kind" x-text="txSign(t) + fmt(t.amount, txCurrency(t))"></span>
+                <span class="tx-bal" x-show="balanceAfterLabel(t)" x-text="balanceAfterLabel(t)"
+                  title="Balance in that account right after this entry"></span>
+              </div>
               <span class="tx-actions">
                 <button class="icon" @click="openEditTx(t)" title="Edit">✏️</button>
                 <button class="icon" @click="deleteTx(t)" title="Delete">🗑️</button>
@@ -334,6 +362,10 @@
             </div>
           </div>
         </template>
+        <div class="show-more" x-show="filteredTotals.count > recentTx.length">
+          <button class="minibtn" @click="showMoreTx()"
+            x-text="`Show more (${filteredTotals.count - recentTx.length} more)`"></button>
+        </div>
       </section>
     </section>
 

@@ -320,6 +320,22 @@ input:focus, select:focus { outline: none; box-shadow: var(--shadow-sm); }
 .ai-output ul, .ai-output ol { margin: 8px 0; padding-left: 22px; }
 .ai-output li { font-weight: 600; font-size: 14px; line-height: 1.55; margin: 4px 0; }
 
+/* ---------- Activity filters ---------- */
+.tx-filters {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-bottom: 12px; padding-bottom: 12px;
+  border-bottom: 2px dashed rgba(17, 17, 17, .15);
+}
+.tx-filters .tx-search { flex: 1 1 220px; }
+.tx-filters select { flex: 0 1 auto; width: auto; font-size: 14px; padding: 8px 10px; }
+.tx-filters input[type="search"] { font-size: 14px; padding: 8px 12px; }
+.filter-summary {
+  font-weight: 800; font-size: 13px; opacity: .8; margin-bottom: 10px;
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.filter-summary strong { font-family: var(--font-display); }
+.show-more { display: flex; justify-content: center; margin-top: 14px; }
+
 /* ---------- Categories modal ---------- */
 .cat-list { max-height: 240px; }
 .cat-name { flex: 1; min-width: 0; font-weight: 800; font-size: 14px; }
@@ -412,6 +428,8 @@ input:focus, select:focus { outline: none; box-shadow: var(--shadow-sm); }
 .tx-who { font-family: var(--font-display); font-weight: 600; font-size: 15px; }
 .tx-sub { font-size: 12px; font-weight: 700; opacity: .6; }
 .tx-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.tx-amounts { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.tx-bal { font-size: 11px; font-weight: 800; opacity: .6; white-space: nowrap; }
 .tx-val { font-family: var(--font-display); font-weight: 700; font-size: 17px; }
 .tx-val.expense { color: #c0392b; }
 .tx-val.income { color: #1e8a5a; }

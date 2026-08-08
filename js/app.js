@@ -91,6 +91,8 @@ document.addEventListener('alpine:init', () => {
     categoriesModal: false,
     catDraft: { originalName: null, name: '', emoji: '🏷️' },
     catDeletePending: null, // category name armed for delete (in-modal confirm)
+    txFilter: { accountId: '', category: '', q: '' },
+    txLimit: 40,
     settingsOpen: false,
     goalModal: false,
     contributeModal: false,
@@ -444,10 +446,88 @@ document.addEventListener('alpine:init', () => {
       if (this.catDraft.originalName === cat.name) this.openAddCategory();
       this.persist();
     },
+    // ---- activity filters (account / category / keyword) ----
+    get filteredTx() {
+      const q = this.txFilter.q.trim().toLowerCase();
+      const { accountId, category } = this.txFilter;
+      return this.data.transactions.filter((t) => {
+        // an account matches either leg of a transfer
+        if (accountId && t.accountId !== accountId && t.toAccountId !== accountId) return false;
+        if (category && t.category !== category) return false;
+        if (q) {
+          const hay = [t.note, t.category, this.accountName(t.accountId), t.toAccountId ? this.accountName(t.toAccountId) : '', String(t.amount), t.date]
+            .join(' ')
+            .toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    },
+    // Balance of each account right AFTER each of its transactions, keyed
+    // "accountId:txId". The current stored balance is the anchor: it already
+    // includes every transaction, so we replay effects backwards from newest.
+    buildRunningBalances(accountIds) {
+      const map = {};
+      const stamp = (t) => t.date + (t.createdAt || '');
+      for (const id of accountIds) {
+        const account = fin.accountById(this.data, id);
+        if (!account) continue;
+        const rows = this.data.transactions
+          .filter((t) => t.accountId === id || t.toAccountId === id)
+          .sort((a, b) => stamp(a).localeCompare(stamp(b)));
+        let running = Number(account.balance) || 0;
+        for (let i = rows.length - 1; i >= 0; i--) {
+          map[`${id}:${rows[i].id}`] = running;
+          running -= fin.txEffectOn(account, rows[i]); // step back one transaction
+        }
+      }
+      return map;
+    },
     get recentTx() {
-      return [...this.data.transactions]
-        .sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt))
-        .slice(0, 40);
+      const rows = [...this.filteredTx]
+        .sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || '')))
+        .slice(0, this.txLimit);
+      // When filtering to one account, show that account's balance; otherwise the
+      // account the entry came from (the "from" side of a transfer).
+      const focus = this.txFilter.accountId;
+      const ids = [...new Set(rows.map((t) => focus || t.accountId))];
+      const balances = this.buildRunningBalances(ids);
+      return rows.map((t) => {
+        const balAccountId = focus || t.accountId;
+        return { ...t, balAccountId, balanceAfter: balances[`${balAccountId}:${t.id}`] };
+      });
+    },
+    // "🏦 $2,955.00" — the account's balance after that entry, bank-statement style.
+    balanceAfterLabel(row) {
+      if (row.balanceAfter === undefined || row.balanceAfter === null) return '';
+      const acct = fin.accountById(this.data, row.balAccountId);
+      if (!acct) return '';
+      const owed = fin.isCredit(acct) && row.balanceAfter > 0.005;
+      return `${acct.emoji} ${owed ? 'owed ' : ''}${this.fmt(Math.abs(row.balanceAfter), acct.currency)}`;
+    },
+    get txFilterActive() {
+      return !!(this.txFilter.accountId || this.txFilter.category || this.txFilter.q.trim());
+    },
+    // Sum of what's showing, in base currency — handy when filtering to one category.
+    get filteredTotals() {
+      let expense = 0;
+      let income = 0;
+      for (const t of this.filteredTx) {
+        if (t.kind === 'transfer') continue;
+        const acct = fin.accountById(this.data, t.accountId);
+        const v = fx.toBase(Number(t.amount) || 0, acct?.currency || this.baseCurrency, this.data);
+        if (v === null) continue;
+        if (t.kind === 'expense') expense += v;
+        else income += v;
+      }
+      return { expense, income, count: this.filteredTx.length };
+    },
+    clearTxFilter() {
+      this.txFilter = { accountId: '', category: '', q: '' };
+      this.txLimit = 40;
+    },
+    showMoreTx() {
+      this.txLimit += 40;
     },
     openAddTx(kind = 'expense') {
       if (!this.hasAccounts) return this.flash('Add an account first 🙂');

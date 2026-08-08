@@ -43,6 +43,22 @@ export function applyTx(data, tx, dir = 1) {
   }
 }
 
+// How much ONE account's stored balance moves because of this transaction.
+// Mirrors applyTx exactly, so replaying these deltas reproduces the balance.
+export function txEffectOn(account, tx) {
+  if (!account) return 0;
+  const amt = Number(tx.amount) || 0;
+  const out = isCredit(account) ? amt : -amt; // money leaving: assets drop, cards owe more
+  const into = isCredit(account) ? -amt : amt; // money arriving
+  if (tx.kind === 'expense') return tx.accountId === account.id ? out : 0;
+  if (tx.kind === 'income') return tx.accountId === account.id ? into : 0;
+  if (tx.kind === 'transfer') {
+    if (tx.accountId === account.id) return out;
+    if (tx.toAccountId === account.id) return into;
+  }
+  return 0;
+}
+
 // --- Net worth: assets you HAVE minus credit you OWE, all in base currency ---
 export function totals(data) {
   let have = 0;

@@ -64,6 +64,12 @@ Settings, Backup, and Restore live at the bottom of the menu.
   can track a **credit limit** with an availability/utilization bar.
 - **Categories & monthly budgets** — tag spending, set monthly limits per category (in **🎯 Budgets**),
   and watch the bars fill — they flag when you go **over**.
+- **Find anything** — the Recent activity list has a **🔍 search box** (matches notes, categories,
+  account names, amounts and dates) plus **account** and **category** dropdowns. Filters combine, and
+  a line shows how many entries match and what they total. **Show more** loads older entries.
+- **Running balance** — like a bank statement, each entry shows the account's balance right after it,
+  in small grey text under the amount (cards show what you *owed* at that point). Filter to one
+  account to read its history top-to-bottom; transfers show whichever account you're looking at.
 - **Your own categories** — **🏷️ Categories** (on the Spending page) lets you add new categories
   (name + emoji), rename them (all logged history, recurring items, and budgets follow along), or
   delete them (logged items move to "Other"). Income and Adjustment are built-in and stay put.
