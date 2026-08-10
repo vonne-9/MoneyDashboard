@@ -643,10 +643,15 @@ document.addEventListener('alpine:init', () => {
       if (!Number.isFinite(actual)) return this.flash('Enter the real balance as a number');
       const diff = actual - Number(acc.balance);
       if (Math.abs(diff) > 0.005) {
+        // On an asset account a bigger real figure means money arrived (income).
+        // A credit card's balance is what you OWE, so a bigger real figure means
+        // a charge we never logged (expense) — the direction flips.
+        const higher = diff > 0;
+        const kind = fin.isCredit(acc) ? (higher ? 'expense' : 'income') : (higher ? 'income' : 'expense');
         // Record the drift as an Adjustment so history & the trend chart stay honest.
         const adj = {
           id: store.newId(),
-          kind: diff > 0 ? 'income' : 'expense',
+          kind,
           accountId: acc.id,
           toAccountId: null,
           amount: Math.abs(diff),
