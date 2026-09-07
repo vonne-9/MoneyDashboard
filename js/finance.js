@@ -5,7 +5,7 @@
 //   credit accounts:                  `balance` = money you OWE
 // A transaction mutates the stored balance directly (checkbook-register style);
 // "reconcile" later compares that running balance to reality and corrects drift.
-import { toBase } from './fx.js';
+import { toBase, convert } from './fx.js';
 
 export function isCredit(account) {
   return account?.type === 'credit';
@@ -202,6 +202,49 @@ export function gainLoss(account) {
   return { diff, pct: (diff / basis) * 100 };
 }
 
+// --- Split expenses: what a bill cost YOU vs what left the account ---
+
+// `amount` is what actually left the account; `myShare` is your real cost when
+// you covered part of a bill for someone else. Works for recurring items too —
+// they carry the same fields. Absent myShare means the whole thing was yours.
+export function realCost(item) {
+  const share = Number(item?.myShare);
+  return item?.myShare != null && Number.isFinite(share) ? share : Number(item?.amount) || 0;
+}
+
+export function isSplit(item) {
+  return item?.myShare != null && Number(item.myShare) < (Number(item.amount) || 0) - 0.005;
+}
+
+// Still owed to you on a split expense: what you fronted for others, minus the
+// repayments linked back to it. Derived (never stored) so it self-heals when
+// entries are edited or deleted. Repayments may land in a different-currency
+// account, so convert them into the expense's currency.
+export function owedOn(data, tx) {
+  if (!tx || tx.kind !== 'expense' || !isSplit(tx)) return 0;
+  const cur = accountById(data, tx.accountId)?.currency || data.settings.baseCurrency;
+  const fronted = (Number(tx.amount) || 0) - realCost(tx);
+  let repaid = 0;
+  for (const r of data.transactions) {
+    if (r.settlesTxId !== tx.id) continue;
+    const rCur = accountById(data, r.accountId)?.currency || data.settings.baseCurrency;
+    repaid += (rCur === cur ? Number(r.amount) || 0 : convert(Number(r.amount) || 0, rCur, cur, data)) || 0;
+  }
+  return Math.max(0, fronted - repaid);
+}
+
+// Everything friends/roommates still owe you, in base currency.
+export function owedTotal(data) {
+  let total = 0;
+  for (const t of data.transactions) {
+    const owed = owedOn(data, t);
+    if (!owed) continue;
+    const cur = accountById(data, t.accountId)?.currency || data.settings.baseCurrency;
+    total += toBase(owed, cur, data) ?? 0;
+  }
+  return total;
+}
+
 export function spendByCategory(data, ym) {
   const totalsByCat = {};
   for (const tx of data.transactions) {
@@ -209,7 +252,7 @@ export function spendByCategory(data, ym) {
     if (monthKey(tx.date) !== ym) continue;
     const acct = accountById(data, tx.accountId);
     if (!acct) continue;
-    const inBase = toBase(Number(tx.amount) || 0, acct.currency, data);
+    const inBase = toBase(realCost(tx), acct.currency, data); // only YOUR share counts
     if (inBase === null) continue;
     const cat = tx.category || 'Other';
     totalsByCat[cat] = (totalsByCat[cat] || 0) + inBase;

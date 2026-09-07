@@ -67,6 +67,9 @@
         <div class="hero-pills">
           <span class="pill pill-have">💵 You have <strong x-text="fmtBase(totals.have)"></strong></span>
           <span class="pill pill-owe" x-show="creditAccounts.length">💳 You owe <strong x-text="fmtBase(totals.owe)"></strong></span>
+          <span class="pill pill-owed" x-show="owedTotal > 0.005"
+            title="Money you fronted for others — not counted in net worth until it arrives">
+            🤝 Owed to you <strong x-text="fmtBase(owedTotal)"></strong></span>
           <span class="pill pill-locked" x-show="lockedTotal > 0.005"
             title="Money in CDs & retirement accounts — counted in your net worth, but not spendable yet">
             🔒 Locked <strong x-text="fmtBase(lockedTotal)"></strong></span>
@@ -289,6 +292,8 @@
                     <span x-text="item.cadence"></span> ·
                     <span class="rec-due" :class="dueClass(item)" x-text="dueLabel(item)"></span>
                   </div>
+                  <div class="tx-split" x-show="isSplit(item)"
+                    x-text="`🤝 ${fmt(realCost(item), recCurrency(item))} mine each time`"></div>
                 </div>
               </div>
               <div class="rec-right">
@@ -346,6 +351,10 @@
                   <span x-text="txAccountLabel(t)"></span> ·
                   <span x-text="t.kind === 'transfer' ? 'Transfer' : t.category"></span> ·
                   <span x-text="t.date"></span>
+                </div>
+                <div class="tx-split" x-show="isSplit(t)">
+                  <span x-text="splitLabel(t)"></span>
+                  <button class="minibtn" x-show="owedOn(t) > 0.005" @click="openSettle(t)">⭐ Mark received</button>
                 </div>
               </div>
             </div>
@@ -582,6 +591,29 @@
           </template>
         </select>
       </label>
+      <div class="split-box" x-show="tx.kind === 'expense'">
+        <label class="split-toggle">
+          <input type="checkbox" x-model="tx.split" />
+          <span>🤝 Split with others — I'm only paying part of this</span>
+        </label>
+        <div x-show="tx.split">
+          <div class="field-row">
+            <label class="field"><span>My share</span>
+              <input type="number" step="any" x-model="tx.myShare" placeholder="0.00" />
+            </label>
+            <div class="field">
+              <span>Split evenly</span>
+              <div class="split-quick">
+                <button type="button" class="minibtn" @click="quickSplit(tx, 2)">÷2</button>
+                <button type="button" class="minibtn" @click="quickSplit(tx, 3)">÷3</button>
+                <button type="button" class="minibtn" @click="quickSplit(tx, 4)">÷4</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint" x-show="splitOwedHint(tx)" x-text="splitOwedHint(tx)"></p>
+          <p class="hint">Only your share counts toward budgets; the full amount still leaves the account.</p>
+        </div>
+      </div>
       <label class="field"><span>Note (optional)</span>
         <input type="text" x-model="tx.note" placeholder="e.g. Ramen Bar" @keydown.enter="saveTx()" />
       </label>
@@ -626,7 +658,7 @@
       <h3>Monthly budgets 🎯</h3>
       <p class="hint">Set a monthly limit per category, in <strong x-text="baseCurrency"></strong>. Leave blank for no limit.</p>
       <div class="rate-list">
-        <template x-for="c in categories.filter(c => c.name !== 'Income' && c.name !== 'Adjustment')" :key="c.name">
+        <template x-for="c in categories.filter(c => !isProtectedCategory(c.name))" :key="c.name">
           <div class="rate-row">
             <span class="rate-code"><span x-text="c.emoji"></span> <span x-text="c.name"></span></span>
             <input type="number" step="any" placeholder="none" :value="budgetFor(c.name)"
@@ -797,9 +829,64 @@
           <input type="date" x-model="rec.nextDate" />
         </label>
       </div>
+      <div class="split-box" x-show="rec.kind === 'expense'">
+        <label class="split-toggle">
+          <input type="checkbox" x-model="rec.split" />
+          <span>🤝 Split with others — I'm only paying part of this</span>
+        </label>
+        <div x-show="rec.split">
+          <div class="field-row">
+            <label class="field"><span>My share</span>
+              <input type="number" step="any" x-model="rec.myShare" placeholder="0.00" />
+            </label>
+            <div class="field">
+              <span>Split evenly</span>
+              <div class="split-quick">
+                <button type="button" class="minibtn" @click="quickSplit(rec, 2)">÷2</button>
+                <button type="button" class="minibtn" @click="quickSplit(rec, 3)">÷3</button>
+                <button type="button" class="minibtn" @click="quickSplit(rec, 4)">÷4</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint" x-show="splitOwedHint(rec)" x-text="splitOwedHint(rec)"></p>
+          <p class="hint">Only your share counts toward budgets; the full amount still leaves the account.</p>
+        </div>
+      </div>
       <div class="modal-actions">
         <button class="btn" @click="recurringModal = false">Cancel</button>
         <button class="btn btn-primary" @click="saveRecurring()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Settle (mark repayment received) modal ===== -->
+  <div class="overlay" x-show="settleModal" @click.self="settleModal = false" x-cloak>
+    <div class="modal" x-show="settleTx">
+      <h3>Mark received 🤝</h3>
+      <p class="hint">
+        Logs money coming back to you for
+        <strong x-text="settleTx?.note || settleTx?.category || 'this expense'"></strong>.
+        It won't count as income or change your budgets — it's your own money returning.
+      </p>
+      <label class="field"><span>Landed in which account?</span>
+        <select x-model="settle.accountId" @change="prefillSettleAmount()">
+          <template x-for="a in data.accounts" :key="a.id">
+            <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
+          </template>
+        </select>
+      </label>
+      <div class="field-row">
+        <label class="field"><span>Amount received</span>
+          <input type="number" step="any" x-model="settle.amount" @keydown.enter="saveSettle()" />
+        </label>
+        <label class="field"><span>Date</span>
+          <input type="date" x-model="settle.date" />
+        </label>
+      </div>
+      <p class="hint">Outstanding: <strong x-text="fmt(settleOutstanding(), settle.accountId ? (data.accounts.find(a => a.id === settle.accountId)?.currency || baseCurrency) : baseCurrency)"></strong> — pay it back in parts if you like.</p>
+      <div class="modal-actions">
+        <button class="btn" @click="settleModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveSettle()">Record it</button>
       </div>
     </div>
   </div>

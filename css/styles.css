@@ -350,6 +350,27 @@ input:focus, select:focus { outline: none; box-shadow: var(--shadow-sm); }
 .cat-emoji-field { flex: 0 0 90px; }
 .cat-form .modal-actions { margin-top: 10px; }
 
+/* ---------- Split expenses & reimbursements ---------- */
+.split-box {
+  border: 2px dashed rgba(17, 17, 17, .28); border-radius: 12px;
+  padding: 10px 12px; margin-bottom: 14px; background: #fffdf8;
+}
+.split-toggle {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-family: var(--font-display); font-weight: 600; font-size: 14px;
+}
+.split-toggle input { width: 18px; height: 18px; accent-color: var(--pink); cursor: pointer; }
+.split-quick { display: flex; gap: 6px; }
+.split-quick .minibtn { flex: 1; }
+.split-box .hint { margin: 6px 0 0; }
+
+/* badge under an activity row / recurring item */
+.tx-split {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; font-weight: 800; margin-top: 4px; color: #7a4b12;
+}
+.pill-owed { background: #ffd166; }
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);

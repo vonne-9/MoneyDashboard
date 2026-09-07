@@ -26,9 +26,13 @@ export function monthFlows(data, ym) {
   let income = 0;
   let expense = 0;
   for (const t of data.transactions) {
-    if (fin.monthKey(t.date) !== ym || t.kind === 'transfer' || t.category === 'Adjustment') continue;
-    const acct = fin.accountById(data, t.accountId);
-    const v = toBase(Number(t.amount) || 0, acct?.currency || data.settings.baseCurrency, data);
+    if (fin.monthKey(t.date) !== ym || t.kind === 'transfer') continue;
+    // Adjustments are reconcile drift; Reimbursements are your own money coming
+    // back from a split bill — neither is real income or spending.
+    if (t.category === 'Adjustment' || t.category === 'Reimbursement') continue;
+    const cur = fin.accountById(data, t.accountId)?.currency || data.settings.baseCurrency;
+    // expenses count only YOUR share of a split bill
+    const v = toBase(t.kind === 'expense' ? fin.realCost(t) : Number(t.amount) || 0, cur, data);
     if (v === null) continue;
     if (t.kind === 'income') income += v;
     else if (t.kind === 'expense') expense += v;
@@ -85,7 +89,7 @@ export function monthlyRecurringExpense(data) {
   for (const r of data.recurring) {
     if (r.kind !== 'expense') continue;
     const acct = fin.accountById(data, r.accountId);
-    const v = toBase(Number(r.amount) || 0, acct?.currency || data.settings.baseCurrency, data);
+    const v = toBase(fin.realCost(r), acct?.currency || data.settings.baseCurrency, data); // your share
     if (v === null) continue;
     total += v * (factor[r.cadence] ?? 1);
     count += 1;
@@ -239,6 +243,15 @@ export function buildInsights(data, todayStr, fmtBase) {
     push('subscriptions-total', 'info', '🔁', 'Recurring spending adds up',
       `Your ${rec.count} recurring expense${rec.count === 1 ? '' : 's'} total ≈ ${fmtBase(rec.total)}/month (${fmtBase(rec.total * 12)}/year).`,
       'Subscriptions are silent nibblers. A yearly "do I still use this?" audit is one of the easiest wins in personal finance.');
+  }
+
+  // 9b. money friends still owe you
+  const owed = fin.owedTotal(data);
+  if (owed > 0.005) {
+    const n = data.transactions.filter((t) => fin.owedOn(data, t) > 0.005).length;
+    push('reimbursements-owed', 'info', '🤝', 'People owe you money',
+      `${fmtBase(owed)} is still owed to you across ${n} split expense${n === 1 ? '' : 's'}.`,
+      "Money you front for others is easy to forget — and it isn't counted in your net worth until it actually lands. A gentle nudge beats quietly gifting it away.");
   }
 
   // 10. net-worth trend / snapshot nudge

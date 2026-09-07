@@ -34,13 +34,13 @@ function blankAccount() {
   };
 }
 function blankTx(kind = 'expense') {
-  return { id: null, kind, accountId: '', toAccountId: '', amount: '', category: 'Food', date: today(), note: '' };
+  return { id: null, kind, accountId: '', toAccountId: '', amount: '', category: 'Food', date: today(), note: '', split: false, myShare: '' };
 }
 function blankGoal() {
   return { id: null, name: '', emoji: '🎯', accountId: '', currency: 'USD', targetAmount: '', saved: 0 };
 }
 function blankRecurring() {
-  return { id: null, name: '', emoji: '🔁', kind: 'expense', accountId: '', toAccountId: '', category: 'Bills', amount: '', cadence: 'monthly', nextDate: today() };
+  return { id: null, name: '', emoji: '🔁', kind: 'expense', accountId: '', toAccountId: '', category: 'Bills', amount: '', cadence: 'monthly', nextDate: today(), split: false, myShare: '' };
 }
 const GOAL_EMOJIS = ['🎯', '🏖️', '🏠', '🚗', '💍', '🎓', '🎁', '💻', '🐣', '🛟', '🎄', '💎'];
 
@@ -92,6 +92,8 @@ document.addEventListener('alpine:init', () => {
     catDraft: { originalName: null, name: '', emoji: '🏷️' },
     catDeletePending: null, // category name armed for delete (in-modal confirm)
     txFilter: { accountId: '', category: '', q: '' },
+    settleModal: false,
+    settle: { txId: '', accountId: '', amount: '', date: today() },
     txLimit: 40,
     settingsOpen: false,
     goalModal: false,
@@ -362,7 +364,7 @@ document.addEventListener('alpine:init', () => {
     // ================= category management =================
     // Income & Adjustment are wired into app logic (income defaults, reconcile
     // drift, insights math) — they can't be renamed or deleted.
-    PROTECTED_CATEGORIES: ['Income', 'Adjustment'],
+    PROTECTED_CATEGORIES: ['Income', 'Adjustment', 'Reimbursement'],
     isProtectedCategory(name) {
       return this.PROTECTED_CATEGORIES.includes(name);
     },
@@ -512,15 +514,17 @@ document.addEventListener('alpine:init', () => {
     get filteredTotals() {
       let expense = 0;
       let income = 0;
+      let reimbursed = 0;
       for (const t of this.filteredTx) {
         if (t.kind === 'transfer') continue;
-        const acct = fin.accountById(this.data, t.accountId);
-        const v = fx.toBase(Number(t.amount) || 0, acct?.currency || this.baseCurrency, this.data);
+        const cur = fin.accountById(this.data, t.accountId)?.currency || this.baseCurrency;
+        const v = fx.toBase(t.kind === 'expense' ? fin.realCost(t) : Number(t.amount) || 0, cur, this.data);
         if (v === null) continue;
         if (t.kind === 'expense') expense += v;
+        else if (t.category === 'Reimbursement') reimbursed += v;
         else income += v;
       }
-      return { expense, income, count: this.filteredTx.length };
+      return { expense, income, reimbursed, count: this.filteredTx.length };
     },
     clearTxFilter() {
       this.txFilter = { accountId: '', category: '', q: '' };
@@ -549,7 +553,12 @@ document.addEventListener('alpine:init', () => {
       this.txModal = true;
     },
     openEditTx(t) {
-      this.tx = { ...t, amount: String(t.amount) };
+      this.tx = {
+        ...t,
+        amount: String(t.amount),
+        split: fin.isSplit(t),
+        myShare: t.myShare != null ? String(t.myShare) : '',
+      };
       this.txModal = true;
     },
     setTxKind(kind) {
@@ -576,12 +585,17 @@ document.addEventListener('alpine:init', () => {
       if ((this.tx.kind === 'expense' || this.tx.kind === 'transfer') && fromAcct && this.isLockedAcct(fromAcct)) {
         if (!confirm(`🔒 ${fromAcct.name} is locked ${this.lockReason(fromAcct)}. Early withdrawals usually cost penalties — log it anyway?`)) return;
       }
+      const myShare = this.splitShareFor(this.tx, amount);
+      if (myShare === false) return; // validation already flashed
+      const prior = this.data.transactions.find((t) => t.id === this.tx.id);
       const clean = {
         id: this.tx.id || store.newId(),
         kind: this.tx.kind,
         accountId: this.tx.accountId,
         toAccountId: this.tx.kind === 'transfer' ? this.tx.toAccountId : null,
         amount,
+        myShare,
+        settlesTxId: prior?.settlesTxId ?? null, // keep repayment links through edits
         category: this.tx.kind === 'transfer' ? null : this.tx.category,
         date: this.tx.date || today(),
         note: this.tx.note.trim(),
@@ -602,7 +616,12 @@ document.addEventListener('alpine:init', () => {
       this.drawChart();
     },
     deleteTx(t) {
-      if (!confirm('Delete this entry?')) return;
+      const linked = this.data.transactions.filter((x) => x.settlesTxId === t.id);
+      const msg = linked.length
+        ? `Delete this entry? Its ${linked.length} linked repayment${linked.length === 1 ? '' : 's'} will be kept (that money really did arrive) but no longer linked.`
+        : 'Delete this entry?';
+      if (!confirm(msg)) return;
+      linked.forEach((x) => { x.settlesTxId = null; });
       fin.applyTx(this.data, t, -1);
       this.data.transactions = this.data.transactions.filter((x) => x.id !== t.id);
       this.persist();
@@ -618,6 +637,118 @@ document.addEventListener('alpine:init', () => {
     },
     txCurrency(t) {
       return fin.accountById(this.data, t.accountId)?.currency || this.baseCurrency;
+    },
+
+    // ================= split expenses & reimbursements =================
+    // `amount` = what left the account (drives balances); `myShare` = what it
+    // really cost you (drives budgets). The gap is what others owe you.
+    realCost(item) {
+      return fin.realCost(item);
+    },
+    isSplit(item) {
+      return fin.isSplit(item);
+    },
+    owedOn(tx) {
+      return fin.owedOn(this.data, tx);
+    },
+    get owedTotal() {
+      return fin.owedTotal(this.data);
+    },
+    // Validates a modal draft and returns the myShare to store: a number when it's
+    // a real split, null when it isn't, or `false` when the input is invalid.
+    splitShareFor(draft, amount) {
+      if (draft.kind !== 'expense' || !draft.split) return null;
+      const share = Number(draft.myShare);
+      if (draft.myShare === '' || !Number.isFinite(share) || share < 0) {
+        this.flash('Enter your share (0 or more) 🙂');
+        return false;
+      }
+      if (share > amount + 0.005) {
+        this.flash("Your share can't be more than the total");
+        return false;
+      }
+      return share < amount - 0.005 ? share : null; // paying it all = not a split
+    },
+    // ÷N button: my share becomes an even slice of the bill
+    quickSplit(draft, n) {
+      const amount = Number(draft.amount);
+      if (!(amount > 0)) return this.flash('Enter the full amount first');
+      draft.split = true;
+      draft.myShare = (amount / n).toFixed(2);
+    },
+    // live hint under the split fields
+    splitOwedHint(draft) {
+      const amount = Number(draft.amount);
+      const mine = Number(draft.myShare);
+      if (!(amount > 0) || draft.myShare === '' || !Number.isFinite(mine)) return '';
+      const owed = amount - mine;
+      if (owed <= 0.005) return '';
+      const cur = fin.accountById(this.data, draft.accountId)?.currency || this.baseCurrency;
+      return `🤝 Others owe you ${this.fmt(owed, cur)}`;
+    },
+    // "🤝 $40.00 mine · $60.00 owed"  /  "· settled"
+    splitLabel(t) {
+      if (!fin.isSplit(t)) return '';
+      const cur = fin.accountById(this.data, t.accountId)?.currency || this.baseCurrency;
+      const owed = fin.owedOn(this.data, t);
+      const tail = owed > 0.005 ? `${this.fmt(owed, cur)} owed` : 'settled ✓';
+      return `🤝 ${this.fmt(fin.realCost(t), cur)} mine · ${tail}`;
+    },
+    openSettle(tx) {
+      if (fin.owedOn(this.data, tx) <= 0.005) return;
+      const target = this.assetAccounts[0] || this.data.accounts[0];
+      this.settle = { txId: tx.id, accountId: target?.id || '', amount: '', date: today() };
+      this.prefillSettleAmount();
+      this.settleModal = true;
+    },
+    get settleTx() {
+      return this.data.transactions.find((t) => t.id === this.settle.txId) || null;
+    },
+    // Outstanding, expressed in the currency of the account receiving the money.
+    settleOutstanding() {
+      const tx = this.settleTx;
+      if (!tx) return 0;
+      const owed = fin.owedOn(this.data, tx);
+      const from = fin.accountById(this.data, tx.accountId)?.currency || this.baseCurrency;
+      const to = fin.accountById(this.data, this.settle.accountId)?.currency || this.baseCurrency;
+      if (from === to) return owed;
+      return fx.convert(owed, from, to, this.data) ?? owed;
+    },
+    prefillSettleAmount() {
+      this.settle.amount = this.settleOutstanding().toFixed(2);
+    },
+    saveSettle() {
+      const tx = this.settleTx;
+      if (!tx) return;
+      if (!this.settle.accountId) return this.flash('Pick the account that received it');
+      let amount = Number(this.settle.amount);
+      if (!(amount > 0)) return this.flash('Enter an amount greater than 0');
+      const cur = fin.accountById(this.data, this.settle.accountId)?.currency || this.baseCurrency;
+      const outstanding = this.settleOutstanding();
+      if (amount > outstanding + 0.005) {
+        amount = Number(outstanding.toFixed(2));
+        this.flash(`That's more than outstanding — using ${this.fmt(amount, cur)}`);
+      }
+      const repayment = {
+        id: store.newId(),
+        kind: 'income',
+        accountId: this.settle.accountId,
+        toAccountId: null,
+        amount,
+        myShare: null,
+        settlesTxId: tx.id, // links it back so the outstanding figure updates
+        category: 'Reimbursement',
+        date: this.settle.date || today(),
+        note: `Repayment: ${tx.note || tx.category || 'split expense'}`,
+        source: 'manual',
+        createdAt: new Date().toISOString(),
+      };
+      this.data.transactions.push(repayment);
+      fin.applyTx(this.data, repayment, 1);
+      this.persist();
+      this.settleModal = false;
+      this.drawChart();
+      this.flash('Repayment recorded 🤝');
     },
 
     // ================= reconcile =================
@@ -822,7 +953,12 @@ document.addEventListener('alpine:init', () => {
       this.recurringModal = true;
     },
     openEditRecurring(item) {
-      this.rec = { ...item, amount: String(item.amount) };
+      this.rec = {
+        ...item,
+        amount: String(item.amount),
+        split: fin.isSplit(item),
+        myShare: item.myShare != null ? String(item.myShare) : '',
+      };
       this.recurringModal = true;
     },
     setRecKind(kind) {
@@ -842,10 +978,13 @@ document.addEventListener('alpine:init', () => {
       if (this.rec.kind === 'transfer' && (!this.rec.toAccountId || this.rec.toAccountId === this.rec.accountId)) {
         return this.flash('Pick two different accounts for the transfer');
       }
+      const recShare = this.splitShareFor(this.rec, amount);
+      if (recShare === false) return;
       const clean = {
         id: this.rec.id || store.newId(),
         name,
         emoji: this.rec.emoji,
+        myShare: recShare,
         kind: this.rec.kind,
         accountId: this.rec.accountId,
         toAccountId: this.rec.kind === 'transfer' ? this.rec.toAccountId : null,
@@ -873,6 +1012,7 @@ document.addEventListener('alpine:init', () => {
         accountId: item.accountId,
         toAccountId: item.kind === 'transfer' ? item.toAccountId : null,
         amount: Number(item.amount),
+        myShare: item.myShare ?? null, // rent split repeats every month
         category: item.kind === 'transfer' ? null : item.category,
         date: item.nextDate,
         note: item.name,
@@ -1026,7 +1166,7 @@ document.addEventListener('alpine:init', () => {
         ws[XLSX.utils.encode_cell({ r, c })] = { v, t: typeof v === 'number' ? 'n' : 's', s };
       };
       const bandStyle = (r, cStart, cEnd, s) => { for (let c = cStart; c <= cEnd; c++) put(r, c, '', s); };
-      const EC = 7; // expense columns A..G
+      const EC = 8; // expense columns A..H
 
       // --- Expenses title (merged) ---
       put(R, 0, `Expenses — ${label}`, XS.title);
@@ -1035,11 +1175,13 @@ document.addEventListener('alpine:init', () => {
       R += 1;
 
       // --- Expenses header ---
-      ['Date', 'Account', 'Category', 'Note', 'Amount', 'Currency', `Amount (${base})`].forEach((h, c) => put(R, c, h, XS.header));
+      ['Date', 'Account', 'Category', 'Note', 'Amount', 'Currency', `Charged (${base})`, `My share (${base})`]
+        .forEach((h, c) => put(R, c, h, XS.header));
       R += 1;
 
       // --- Expense rows (zebra striped) ---
       let total = 0;
+      let mineTotal = 0;
       const spentByCat = {};
       expenses.forEach((t, i) => {
         const alt = i % 2 === 1;
@@ -1055,12 +1197,17 @@ document.addEventListener('alpine:init', () => {
         put(R, 3, t.note || '', cS);
         put(R, 4, Number((Number(t.amount) || 0).toFixed(2)), nS);
         put(R, 5, cur, ctrS);
+        const mineBase = fx.toBase(fin.realCost(t), cur, this.data);
         if (inBase == null) {
           put(R, 6, '', cS);
+          put(R, 7, '', cS);
         } else {
           put(R, 6, Number(inBase.toFixed(2)), nS);
+          put(R, 7, Number((mineBase ?? inBase).toFixed(2)), nS);
           total += inBase;
-          spentByCat[t.category || 'Other'] = (spentByCat[t.category || 'Other'] || 0) + inBase;
+          mineTotal += mineBase ?? inBase;
+          // budgets compare against YOUR share, so category totals use it too
+          spentByCat[t.category || 'Other'] = (spentByCat[t.category || 'Other'] || 0) + (mineBase ?? inBase);
         }
         R += 1;
       });
@@ -1070,12 +1217,13 @@ document.addEventListener('alpine:init', () => {
       bandStyle(R, 1, 5, XS.totLbl);
       merges.push({ s: { r: R, c: 0 }, e: { r: R, c: 5 } });
       put(R, 6, Number(total.toFixed(2)), XS.totNum);
+      put(R, 7, Number(mineTotal.toFixed(2)), XS.totNum);
       R += 2; // blank spacer row
 
       // --- Budget vs actual ---
       const months = new Set(expenses.map((t) => fin.monthKey(t.date))).size || 1;
       const cats = this.data.categories.filter(
-        (c) => c.name !== 'Income' && c.name !== 'Adjustment' && ((Number(this.data.budgets[c.name]) || 0) > 0 || (spentByCat[c.name] || 0) > 0)
+        (c) => !this.isProtectedCategory(c.name) && ((Number(this.data.budgets[c.name]) || 0) > 0 || (spentByCat[c.name] || 0) > 0)
       );
       const BC = 5; // budget columns A..E
       put(R, 0, `Budget vs actual — ${label}${months > 1 ? ` (${months} months)` : ''}`, XS.title);
@@ -1119,7 +1267,7 @@ document.addEventListener('alpine:init', () => {
 
       ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R, c: EC - 1 } });
       ws['!merges'] = merges;
-      ws['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 26 }, { wch: 11 }, { wch: 9 }, { wch: 15 }];
+      ws['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 26 }, { wch: 11 }, { wch: 9 }, { wch: 15 }, { wch: 15 }];
       return ws;
     },
     get sortedExpenses() {

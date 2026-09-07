@@ -70,6 +70,13 @@ Settings, Backup, and Restore live at the bottom of the menu.
 - **Running balance** — like a bank statement, each entry shows the account's balance right after it,
   in small grey text under the amount (cards show what you *owed* at that point). Filter to one
   account to read its history top-to-bottom; transfers show whichever account you're looking at.
+- **Split expenses 🤝** — when you cover a bill for others, tick **Split with others** and enter
+  **your share** (or tap ÷2 ÷3 ÷4 for an even split). The **full amount** still leaves the account,
+  but **only your share counts toward budgets** — so a $100 dinner where $40 is yours charges the card
+  $100 and adds $40 to Food. The rest shows as **owed to you**, with a **⭐ Mark received** button that
+  logs the money into whichever account it lands in (it never counts as income — it's your money
+  returning). Works on **recurring items** too, so split rent repeats every month automatically.
+  The Overview shows a **🤝 Owed to you** pill; that money isn't counted in net worth until it arrives.
 - **Your own categories** — **🏷️ Categories** (on the Spending page) lets you add new categories
   (name + emoji), rename them (all logged history, recurring items, and budgets follow along), or
   delete them (logged items move to "Other"). Income and Adjustment are built-in and stay put.

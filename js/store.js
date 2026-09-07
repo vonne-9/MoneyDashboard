@@ -2,7 +2,7 @@
 // Everything the dashboard knows lives in one JSON blob under a single key.
 
 const STORAGE_KEY = 'money-dashboard-v1';
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 // Cute default spending categories (Phase 2). Users can add their own later.
 export const DEFAULT_CATEGORIES = [
@@ -17,6 +17,7 @@ export const DEFAULT_CATEGORIES = [
   { name: 'Travel', emoji: '✈️' },
   { name: 'Gifts', emoji: '🎁' },
   { name: 'Income', emoji: '💸' },
+  { name: 'Reimbursement', emoji: '🤝' },
   { name: 'Adjustment', emoji: '🔧' },
   { name: 'Other', emoji: '➕' },
 ];
@@ -76,6 +77,14 @@ function migrate(raw) {
     merged.categories = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
   }
   merged.transactions = Array.isArray(raw.transactions) ? raw.transactions : [];
+
+  // v6 → v7: split expenses record repayments under a Reimbursement category.
+  if (!merged.categories.some((c) => c.name === 'Reimbursement')) {
+    const at = merged.categories.findIndex((c) => c.name === 'Adjustment');
+    const entry = { name: 'Reimbursement', emoji: '🤝' };
+    if (at >= 0) merged.categories.splice(at, 0, entry);
+    else merged.categories.push(entry);
+  }
 
   // v2 → v3: goals / recurring gain real shapes (arrays already default to []).
   merged.goals = Array.isArray(raw.goals) ? raw.goals : [];

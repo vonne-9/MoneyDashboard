@@ -57,6 +57,17 @@ export function toBase(amount, currency, data) {
   return null; // unknown rate — caller shows a hint to set a manual rate
 }
 
+// Convert between two currencies, pivoting through the base currency.
+// Returns null when either leg has no usable rate.
+export function convert(amount, from, to, data) {
+  if (from === to) return Number(amount) || 0;
+  const inBase = toBase(Number(amount) || 0, from, data);
+  if (inBase === null) return null;
+  if (to === data.settings.baseCurrency) return inBase;
+  const perUnit = toBase(1, to, data); // base currency per 1 unit of `to`
+  return perUnit ? inBase / perUnit : null;
+}
+
 // List of currencies we can't convert right now (no manual override, not in cache).
 export function unconvertible(data) {
   const base = data.settings.baseCurrency;
