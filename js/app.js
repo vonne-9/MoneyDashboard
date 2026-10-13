@@ -5,6 +5,7 @@ import * as store from './store.js';
 import * as fx from './fx.js';
 import * as fin from './finance.js';
 import * as insightsEngine from './insights.js';
+import * as categorize from './categorize.js';
 import * as ai from './ai.js';
 import { renderTrend } from './charts.js';
 
@@ -34,7 +35,12 @@ function blankAccount() {
   };
 }
 function blankTx(kind = 'expense') {
-  return { id: null, kind, accountId: '', toAccountId: '', amount: '', category: 'Food', date: today(), note: '', split: false, myShare: '' };
+  // catAuto/catVia are draft-only (never stored): they track whether the category
+  // is still ours to guess, and how we guessed it.
+  return {
+    id: null, kind, accountId: '', toAccountId: '', amount: '', category: 'Food', date: today(),
+    note: '', split: false, myShare: '', catAuto: true, catVia: null,
+  };
 }
 function blankGoal() {
   return { id: null, name: '', emoji: '🎯', accountId: '', currency: 'USD', targetAmount: '', saved: 0 };
@@ -536,12 +542,12 @@ document.addEventListener('alpine:init', () => {
     openAddTx(kind = 'expense') {
       if (!this.hasAccounts) return this.flash('Add an account first 🙂');
       this.tx = blankTx(kind);
-      this.tx.accountId = this.data.accounts[0].id;
+      // The guided flow asks for the account first, so start it empty rather than
+      // silently assuming the first one.
       if (kind === 'expense') this.tx.category = this.defaultExpenseCategory;
-      if (kind === 'income') this.tx.category = 'Income';
-      if (kind === 'transfer') {
-        this.tx.accountId = (this.assetAccounts[0] || this.data.accounts[0]).id;
-        this.tx.toAccountId = this.data.accounts.find((a) => a.id !== this.tx.accountId)?.id || '';
+      if (kind === 'income') {
+        this.tx.category = 'Income';
+        this.tx.catAuto = false; // income's category is fixed, not guessed
       }
       this.txModal = true;
     },
@@ -550,6 +556,7 @@ document.addEventListener('alpine:init', () => {
       this.tx.toAccountId = card.id;
       this.tx.accountId = (this.assetAccounts[0] || {}).id || '';
       this.tx.note = `${card.name} payment`;
+      this.tx.catAuto = false;
       this.txModal = true;
     },
     openEditTx(t) {
@@ -558,19 +565,88 @@ document.addEventListener('alpine:init', () => {
         amount: String(t.amount),
         split: fin.isSplit(t),
         myShare: t.myShare != null ? String(t.myShare) : '',
+        catAuto: false, // you already chose this entry's category — don't re-guess it
+        catVia: null,
       };
       this.txModal = true;
     },
     setTxKind(kind) {
+      const was = this.tx.kind;
       this.tx.kind = kind;
       if (kind === 'income' && (!this.tx.category || this.tx.category === this.defaultExpenseCategory)) this.tx.category = 'Income';
       if (kind === 'expense' && this.tx.category === 'Income') this.tx.category = this.defaultExpenseCategory;
-      if (kind === 'transfer') {
-        if (!this.tx.accountId) this.tx.accountId = (this.assetAccounts[0] || this.data.accounts[0])?.id || '';
-        if (!this.tx.toAccountId || this.tx.toAccountId === this.tx.accountId) {
-          this.tx.toAccountId = this.data.accounts.find((a) => a.id !== this.tx.accountId)?.id || '';
-        }
+      if (kind === 'income') this.tx.catAuto = false; // always the Income category
+      if (kind === 'expense' && was !== 'expense' && !this.tx.id) {
+        this.tx.catAuto = true; // back to an expense: resume guessing from the title
+        this.guessTxCategory();
       }
+      // Never assume where the money goes — that's step 2's whole job.
+      if (kind === 'transfer' && this.tx.toAccountId === this.tx.accountId) this.tx.toAccountId = '';
+    },
+    // ---- Guided logging: fields unlock as the one before them gets a value ----
+    // Unlocking is derived from the DATA, not a step counter, so an entry you're
+    // editing (every value already present) opens fully unlocked.
+    get txSteps() {
+      return this.tx.kind === 'transfer'
+        ? ['accountId', 'toAccountId', 'amount']
+        : ['accountId', 'amount'];
+    },
+    txFilled(key) {
+      if (key === 'amount') return Number(this.tx.amount) > 0;
+      if (key === 'note') return !!String(this.tx.note || '').trim();
+      return !!this.tx[key];
+    },
+    txStepOpen(key) {
+      const steps = this.txSteps;
+      const i = steps.indexOf(key);
+      if (i <= 0) return true;
+      return steps.slice(0, i).every((k) => this.txFilled(k));
+    },
+    // The title + category + date tail opens once the amount is in. The title
+    // itself stays optional, so a $3 cash coffee never needs a name.
+    get txDetailsOpen() {
+      return this.txSteps.every((k) => this.txFilled(k));
+    },
+    get txReady() {
+      return this.txDetailsOpen;
+    },
+    txStepNum(key) {
+      return this.txSteps.indexOf(key) + 1;
+    },
+    get txStepTotal() {
+      return this.txSteps.length + 1; // the steps, plus the details tail
+    },
+    // Move the cursor along as each answer lands, so it really is one at a time.
+    focusTxField(ref) {
+      this.$nextTick(() => this.$refs[ref]?.focus());
+    },
+    onTxAccountPicked() {
+      if (this.tx.kind === 'transfer' && this.tx.toAccountId === this.tx.accountId) this.tx.toAccountId = '';
+      if (this.txStepOpen('amount')) this.focusTxField('txAmount');
+    },
+    // Re-guess the category from the title. Never overrides a category you picked.
+    guessTxCategory() {
+      if (this.tx.kind !== 'expense' || !this.tx.catAuto) return;
+      const hit = categorize.guessCategory(this.tx.note, this.data);
+      this.tx.category = hit ? hit.category : this.defaultExpenseCategory;
+      this.tx.catVia = hit ? hit.via : null;
+    },
+    onTxCategoryPicked() {
+      this.tx.catAuto = false; // you chose — stop second-guessing you
+      this.tx.catVia = null;
+    },
+    get txCatAutoLabel() {
+      if (this.tx.kind === 'transfer' || !this.tx.catAuto || !this.tx.catVia) return '';
+      return this.tx.catVia === 'history' ? 'auto · from your history' : 'auto';
+    },
+    // Overview → tap an account to read its whole story on the Spending page.
+    showAccountTx(acc) {
+      this.txFilter = { accountId: acc.id, category: '', q: '' };
+      this.txLimit = 40;
+      this.setView('spending');
+      this.$nextTick(() => {
+        document.getElementById('activity')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     },
     saveTx() {
       const amount = Number(this.tx.amount);

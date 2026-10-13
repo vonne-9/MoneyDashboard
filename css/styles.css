@@ -351,6 +351,38 @@ input:focus, select:focus { outline: none; box-shadow: var(--shadow-sm); }
 .cat-form .modal-actions { margin-top: 10px; }
 
 /* ---------- Split expenses & reimbursements ---------- */
+/* ---- guided logging: numbered steps that unlock one by one ---- */
+.step-label { display: flex; align-items: center; gap: 7px; }
+.field > .step-label { font-family: var(--font-display); font-weight: 600; font-size: 14px; }
+.step-num {
+  display: inline-grid; place-items: center; flex: 0 0 auto;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid var(--ink); background: #fff;
+  font-family: var(--font-body); font-style: normal; font-weight: 800; font-size: 11px;
+}
+.step.done .step-num { background: var(--mint); }
+.step-check { color: #0a8f5f; font-size: 13px; }
+.step-rest { animation: step-in .16s ease-out; }
+.field.step { animation: step-in .16s ease-out; }
+@keyframes step-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .step-rest, .field.step { animation: none; }
+}
+.auto-badge {
+  font-family: var(--font-body); font-weight: 800; font-size: 10px; letter-spacing: .02em;
+  text-transform: uppercase; background: var(--mint); border: 2px solid var(--ink);
+  border-radius: 10px; padding: 1px 6px;
+}
+.field .hint { margin: 2px 0 0; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; box-shadow: none; transform: none; }
+
+/* tapping an account tile opens its activity */
+.tile-click { cursor: pointer; }
+.tile-click:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
 .split-box {
   border: 2px dashed rgba(17, 17, 17, .28); border-radius: 12px;
   padding: 10px 12px; margin-bottom: 14px; background: #fffdf8;

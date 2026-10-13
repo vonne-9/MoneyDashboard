@@ -113,7 +113,10 @@
 
       <section class="tiles" x-show="hasAccounts">
         <template x-for="acc in data.accounts" :key="acc.id">
-          <article class="tile" :class="isCredit(acc) ? 'tint-credit' : 'tint-' + acc.type">
+          <article class="tile tile-click" :class="isCredit(acc) ? 'tint-credit' : 'tint-' + acc.type"
+                   role="button" tabindex="0" title="See this account's activity"
+                   @click="if (!$event.target.closest('button,select,input,a')) showAccountTx(acc)"
+                   @keydown.enter="showAccountTx(acc)">
             <div class="tile-top">
               <span class="tile-emoji" x-text="acc.emoji"></span>
               <div class="tile-menu">
@@ -311,9 +314,9 @@
         </section>
       </div>
 
-      <section class="card activity" x-show="hasAccounts">
+      <section class="card activity" id="activity" x-show="hasAccounts">
         <div class="card-head">
-          <h3>Recent activity</h3>
+          <h3 x-text="txFilter.accountId ? `${accountName(txFilter.accountId)} — activity` : 'Recent activity'"></h3>
           <button class="btn btn-primary btn-sm" @click="openAddTx('expense')">＋ Add</button>
         </div>
         <!-- filters: account / category / keyword -->
@@ -553,7 +556,7 @@
     </div>
   </div>
 
-  <!-- ===== Transaction modal ===== -->
+  <!-- ===== Transaction modal (guided: each field unlocks the next) ===== -->
   <div class="overlay" x-show="txModal" @click.self="txModal = false" x-cloak>
     <div class="modal">
       <h3 x-text="tx.id ? 'Edit entry' : 'Log activity'"></h3>
@@ -562,67 +565,110 @@
         <button :class="{ active: tx.kind === 'income' }" @click="setTxKind('income')">Income</button>
         <button :class="{ active: tx.kind === 'transfer' }" @click="setTxKind('transfer')">Transfer</button>
       </div>
-      <label class="field"><span x-text="tx.kind === 'transfer' ? 'From account' : 'Account'"></span>
-        <select x-model="tx.accountId">
+
+      <!-- Step 1 — which account? -->
+      <label class="field step" :class="{ done: txFilled('accountId') }">
+        <span class="step-label">
+          <i class="step-num" x-text="txStepNum('accountId')"></i>
+          <span x-text="tx.kind === 'transfer' ? 'From account' : (tx.kind === 'income' ? 'Into account' : 'Account')"></span>
+          <b class="step-check" x-show="txFilled('accountId')">✓</b>
+        </span>
+        <select x-model="tx.accountId" @change="onTxAccountPicked()" x-ref="txAccount">
+          <option value="" disabled x-text="tx.kind === 'income' ? 'Where did it land?…' : 'Which account paid?…'"></option>
           <template x-for="a in data.accounts" :key="a.id">
             <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
           </template>
         </select>
       </label>
-      <label class="field" x-show="tx.kind === 'transfer'"><span>To account</span>
-        <select x-model="tx.toAccountId">
+
+      <!-- Step 2 (transfers only) — where to? -->
+      <label class="field step" x-show="tx.kind === 'transfer' && txStepOpen('toAccountId')"
+             :class="{ done: txFilled('toAccountId') }">
+        <span class="step-label">
+          <i class="step-num" x-text="txStepNum('toAccountId')"></i>
+          <span>To account</span>
+          <b class="step-check" x-show="txFilled('toAccountId')">✓</b>
+        </span>
+        <select x-model="tx.toAccountId" @change="focusTxField('txAmount')">
+          <option value="" disabled>Which account receives it?…</option>
           <template x-for="a in data.accounts.filter(x => x.id !== tx.accountId)" :key="a.id">
             <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
           </template>
         </select>
       </label>
-      <div class="field-row">
-        <label class="field"><span>Amount</span>
-          <input type="number" step="any" x-model="tx.amount" placeholder="0.00" @keydown.enter="saveTx()" />
+
+      <!-- Step 3 — how much? -->
+      <label class="field step" x-show="txStepOpen('amount')" :class="{ done: txFilled('amount') }">
+        <span class="step-label">
+          <i class="step-num" x-text="txStepNum('amount')"></i>
+          <span>How much?</span>
+          <b class="step-check" x-show="txFilled('amount')">✓</b>
+        </span>
+        <input type="number" step="any" x-model="tx.amount" x-ref="txAmount" placeholder="0.00"
+               @keydown.enter.prevent="txDetailsOpen ? focusTxField('txTitle') : null" />
+      </label>
+
+      <!-- The tail: title drives the category guess; everything here is adjustable -->
+      <div class="step-rest" x-show="txDetailsOpen">
+        <label class="field step" :class="{ done: txFilled('note') }">
+          <span class="step-label">
+            <i class="step-num" x-text="txStepTotal"></i>
+            <span x-text="tx.kind === 'transfer' ? 'What is this for?' : 'What was it for?'"></span>
+            <b class="step-check" x-show="txFilled('note')">✓</b>
+          </span>
+          <input type="text" x-model="tx.note" x-ref="txTitle" placeholder="e.g. Ramen Bar"
+                 @input="guessTxCategory()" @keydown.enter="saveTx()" />
+          <small class="hint" x-show="!tx.id && tx.kind === 'expense'">Naming it lets the category fill itself in — optional though.</small>
         </label>
+
+        <label class="field" x-show="tx.kind !== 'transfer'">
+          <span class="step-label">
+            <span>Category</span>
+            <b class="auto-badge" x-show="tx.kind !== 'transfer' && tx.catAuto && !!tx.catVia" x-text="txCatAutoLabel"></b>
+          </span>
+          <select x-model="tx.category" @change="onTxCategoryPicked()">
+            <template x-for="c in categories" :key="c.name">
+              <option :value="c.name" x-text="`${c.emoji} ${c.name}`"></option>
+            </template>
+          </select>
+        </label>
+
         <label class="field"><span>Date</span>
           <input type="date" x-model="tx.date" />
         </label>
-      </div>
-      <label class="field" x-show="tx.kind !== 'transfer'"><span>Category</span>
-        <select x-model="tx.category">
-          <template x-for="c in categories" :key="c.name">
-            <option :value="c.name" x-text="`${c.emoji} ${c.name}`"></option>
-          </template>
-        </select>
-      </label>
-      <div class="split-box" x-show="tx.kind === 'expense'">
-        <label class="split-toggle">
-          <input type="checkbox" x-model="tx.split" />
-          <span>🤝 Split with others — I'm only paying part of this</span>
-        </label>
-        <div x-show="tx.split">
-          <div class="field-row">
-            <label class="field"><span>My share</span>
-              <input type="number" step="any" x-model="tx.myShare" placeholder="0.00" />
-            </label>
-            <div class="field">
-              <span>Split evenly</span>
-              <div class="split-quick">
-                <button type="button" class="minibtn" @click="quickSplit(tx, 2)">÷2</button>
-                <button type="button" class="minibtn" @click="quickSplit(tx, 3)">÷3</button>
-                <button type="button" class="minibtn" @click="quickSplit(tx, 4)">÷4</button>
+
+        <div class="split-box" x-show="tx.kind === 'expense'">
+          <label class="split-toggle">
+            <input type="checkbox" x-model="tx.split" />
+            <span>🤝 Split with others — I'm only paying part of this</span>
+          </label>
+          <div x-show="tx.split">
+            <div class="field-row">
+              <label class="field"><span>My share</span>
+                <input type="number" step="any" x-model="tx.myShare" placeholder="0.00" />
+              </label>
+              <div class="field">
+                <span>Split evenly</span>
+                <div class="split-quick">
+                  <button type="button" class="minibtn" @click="quickSplit(tx, 2)">÷2</button>
+                  <button type="button" class="minibtn" @click="quickSplit(tx, 3)">÷3</button>
+                  <button type="button" class="minibtn" @click="quickSplit(tx, 4)">÷4</button>
+                </div>
               </div>
             </div>
+            <p class="hint" x-show="splitOwedHint(tx)" x-text="splitOwedHint(tx)"></p>
+            <p class="hint">Only your share counts toward budgets; the full amount still leaves the account.</p>
           </div>
-          <p class="hint" x-show="splitOwedHint(tx)" x-text="splitOwedHint(tx)"></p>
-          <p class="hint">Only your share counts toward budgets; the full amount still leaves the account.</p>
         </div>
+
+        <p class="hint" x-show="tx.kind === 'expense' && isCredit(data.accounts.find(a => a.id === tx.accountId) || {})">
+          💳 This is on a credit card — it raises what you owe and won't touch your bank until you pay the bill.
+        </p>
       </div>
-      <label class="field"><span>Note (optional)</span>
-        <input type="text" x-model="tx.note" placeholder="e.g. Ramen Bar" @keydown.enter="saveTx()" />
-      </label>
-      <p class="hint" x-show="tx.kind === 'expense' && isCredit(data.accounts.find(a => a.id === tx.accountId) || {})">
-        💳 This is on a credit card — it raises what you owe and won't touch your bank until you pay the bill.
-      </p>
+
       <div class="modal-actions">
         <button class="btn" @click="txModal = false">Cancel</button>
-        <button class="btn btn-primary" @click="saveTx()">Save</button>
+        <button class="btn btn-primary" @click="saveTx()" :disabled="!txReady">Save</button>
       </div>
     </div>
   </div>

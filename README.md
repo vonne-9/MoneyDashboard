@@ -28,8 +28,9 @@ included). Note each browser keeps its **own** separate data — move data betwe
 A **side menu** (left on desktop, a ☰ drawer on mobile) switches between four pages:
 
 - **🏠 Overview** — net worth, a **per-type totals strip** (how much sits in banks, savings, CDs, …),
-  your accounts & cards (reorder tiles with the **◀ ▶** buttons that appear on hover, or
-  **↩️ Reset order** to group them by type), and the net-worth trend chart.
+  your accounts & cards (**tap any account to see all its transactions**; reorder tiles with the
+  **◀ ▶** buttons that appear on hover, or **↩️ Reset order** to group them by type), and the
+  net-worth trend chart.
 - **💸 Spending** — log expenses/income/transfers, monthly budgets, upcoming recurring items, recent
   activity, and Excel export:
   - **📊 Export Excel** — downloads a real `.xlsx` workbook of your expenses, with an **All expenses**
@@ -57,7 +58,13 @@ Settings, Backup, and Restore live at the bottom of the menu.
   loads it back. Do this occasionally so you never lose anything.
 
 **Spending, credit cards & reconciling (Phase 2)**
-- **Log spending** — record expenses, income, and transfers, each from a chosen account.
+- **Guided logging** — the form asks one thing at a time: **which account → how much → what for**,
+  each answer unlocking the next (the cursor jumps along for you). Name it and the **category fills
+  itself in** — it recognises common places (ramen, uber, rent, pharmacy…) and, better, **learns from
+  your own history**: file "Thai Spoon" under Groceries once and it stays Groceries. The guess is
+  marked **AUTO**; pick a category yourself and it stops guessing for that entry. The date defaults to
+  today, and nothing is locked — every field stays editable before you save. Works for expenses,
+  income and transfers; **editing** an entry opens with everything unlocked at once.
 - **Credit cards done right** — a card is a **debt** account. Charging it **raises what you owe
   and does NOT touch your bank**. Your net worth drops right away, but the bank only moves when
   you **Pay bill** (a transfer from a bank account that lowers both the bank and the card). Cards
@@ -67,6 +74,7 @@ Settings, Backup, and Restore live at the bottom of the menu.
 - **Find anything** — the Recent activity list has a **🔍 search box** (matches notes, categories,
   account names, amounts and dates) plus **account** and **category** dropdowns. Filters combine, and
   a line shows how many entries match and what they total. **Show more** loads older entries.
+  Tapping an account on the Overview page lands you here, already filtered to it.
 - **Running balance** — like a bank statement, each entry shows the account's balance right after it,
   in small grey text under the amount (cards show what you *owed* at that point). Filter to one
   account to read its history top-to-bottom; transfers show whichever account you're looking at.
