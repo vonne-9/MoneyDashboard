@@ -65,6 +65,8 @@ Settings, Backup, and Restore live at the bottom of the menu.
   marked **AUTO**; pick a category yourself and it stops guessing for that entry. The date defaults to
   today, and nothing is locked — every field stays editable before you save. Works for expenses,
   income and transfers; **editing** an entry opens with everything unlocked at once.
+  The same one-at-a-time flow is used for **recurring items** (where the name does the category
+  guessing, so "Netflix" lands in Fun), **Mark received 🤝**, **new accounts** and **new goals**.
 - **Credit cards done right** — a card is a **debt** account. Charging it **raises what you owe
   and does NOT touch your bank**. Your net worth drops right away, but the bank only moves when
   you **Pay bill** (a transfer from a bank account that lowers both the bank and the card). Cards

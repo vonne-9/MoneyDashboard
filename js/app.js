@@ -46,8 +46,16 @@ function blankGoal() {
   return { id: null, name: '', emoji: '🎯', accountId: '', currency: 'USD', targetAmount: '', saved: 0 };
 }
 function blankRecurring() {
-  return { id: null, name: '', emoji: '🔁', kind: 'expense', accountId: '', toAccountId: '', category: 'Bills', amount: '', cadence: 'monthly', nextDate: today(), split: false, myShare: '' };
+  return {
+    id: null, name: '', emoji: '🔁', kind: 'expense', accountId: '', toAccountId: '',
+    category: 'Bills', amount: '', cadence: 'monthly', nextDate: today(),
+    split: false, myShare: '', catAuto: true, catVia: null,
+  };
 }
+// Steps whose value must be a POSITIVE number to count as answered; every other
+// step just needs something in it (a $0 opening balance is a real answer).
+const POSITIVE_STEPS = ['amount', 'targetAmount'];
+
 const GOAL_EMOJIS = ['🎯', '🏖️', '🏠', '🚗', '💍', '🎓', '🎁', '💻', '🐣', '🛟', '🎄', '💎'];
 
 // ----- Excel styling (for xlsx-js-style) -----
@@ -583,46 +591,51 @@ document.addEventListener('alpine:init', () => {
       // Never assume where the money goes — that's step 2's whole job.
       if (kind === 'transfer' && this.tx.toAccountId === this.tx.accountId) this.tx.toAccountId = '';
     },
-    // ---- Guided logging: fields unlock as the one before them gets a value ----
-    // Unlocking is derived from the DATA, not a step counter, so an entry you're
-    // editing (every value already present) opens fully unlocked.
+    // ---- Guided forms: ask one thing at a time -------------------------------
+    // Shared by every "fill it in" modal. Unlocking is derived from the draft's
+    // VALUES rather than a step counter, so a form that opens already filled in
+    // (editing something, or Pay bill) is unlocked all the way through.
+    stepFilled(draft, key) {
+      const v = draft?.[key];
+      if (v == null || v === '') return false;
+      if (POSITIVE_STEPS.includes(key)) return Number(v) > 0;
+      return typeof v === 'string' ? !!v.trim() : true;
+    },
+    stepOpen(draft, steps, key) {
+      const i = steps.indexOf(key);
+      return i <= 0 || steps.slice(0, i).every((k) => this.stepFilled(draft, k));
+    },
+    stepsDone(draft, steps) {
+      return steps.every((k) => this.stepFilled(draft, k));
+    },
+    // Move the cursor along as each answer lands, so it really is one at a time.
+    focusField(ref) {
+      this.$nextTick(() => this.$refs[ref]?.focus());
+    },
+
+    // ---- Logging an entry ----
     get txSteps() {
       return this.tx.kind === 'transfer'
         ? ['accountId', 'toAccountId', 'amount']
         : ['accountId', 'amount'];
     },
     txFilled(key) {
-      if (key === 'amount') return Number(this.tx.amount) > 0;
-      if (key === 'note') return !!String(this.tx.note || '').trim();
-      return !!this.tx[key];
+      return this.stepFilled(this.tx, key);
     },
     txStepOpen(key) {
-      const steps = this.txSteps;
-      const i = steps.indexOf(key);
-      if (i <= 0) return true;
-      return steps.slice(0, i).every((k) => this.txFilled(k));
+      return this.stepOpen(this.tx, this.txSteps, key);
     },
     // The title + category + date tail opens once the amount is in. The title
     // itself stays optional, so a $3 cash coffee never needs a name.
     get txDetailsOpen() {
-      return this.txSteps.every((k) => this.txFilled(k));
+      return this.stepsDone(this.tx, this.txSteps);
     },
     get txReady() {
       return this.txDetailsOpen;
     },
-    txStepNum(key) {
-      return this.txSteps.indexOf(key) + 1;
-    },
-    get txStepTotal() {
-      return this.txSteps.length + 1; // the steps, plus the details tail
-    },
-    // Move the cursor along as each answer lands, so it really is one at a time.
-    focusTxField(ref) {
-      this.$nextTick(() => this.$refs[ref]?.focus());
-    },
     onTxAccountPicked() {
       if (this.tx.kind === 'transfer' && this.tx.toAccountId === this.tx.accountId) this.tx.toAccountId = '';
-      if (this.txStepOpen('amount')) this.focusTxField('txAmount');
+      if (this.txStepOpen('amount')) this.focusField('txAmount');
     },
     // Re-guess the category from the title. Never overrides a category you picked.
     guessTxCategory() {
@@ -648,6 +661,91 @@ document.addEventListener('alpine:init', () => {
         document.getElementById('activity')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     },
+    // ---- Recurring items (same shape as an entry, so the same flow) ----
+    get recSteps() {
+      return this.rec.kind === 'transfer'
+        ? ['name', 'accountId', 'toAccountId', 'amount']
+        : ['name', 'accountId', 'amount'];
+    },
+    recFilled(key) {
+      return this.stepFilled(this.rec, key);
+    },
+    recStepOpen(key) {
+      return this.stepOpen(this.rec, this.recSteps, key);
+    },
+    get recDetailsOpen() {
+      return this.stepsDone(this.rec, this.recSteps);
+    },
+    onRecNameInput() {
+      this.guessRecCategory();
+      if (this.recStepOpen('accountId')) this.focusField('recAccount');
+    },
+    onRecAccountPicked() {
+      if (this.rec.kind === 'transfer' && this.rec.toAccountId === this.rec.accountId) this.rec.toAccountId = '';
+      if (this.recStepOpen('amount')) this.focusField('recAmount');
+    },
+    // The name IS the title here ("Rent", "Netflix"), so it guesses the same way.
+    guessRecCategory() {
+      if (this.rec.kind !== 'expense' || !this.rec.catAuto) return;
+      const hit = categorize.guessCategory(this.rec.name, this.data);
+      this.rec.category = hit ? hit.category : this.defaultRecurringCategory;
+      this.rec.catVia = hit ? hit.via : null;
+    },
+    onRecCategoryPicked() {
+      this.rec.catAuto = false;
+      this.rec.catVia = null;
+    },
+    get recCatAutoLabel() {
+      if (this.rec.kind === 'transfer' || !this.rec.catAuto || !this.rec.catVia) return '';
+      return this.rec.catVia === 'history' ? 'auto · from your history' : 'auto';
+    },
+
+    // ---- Marking a repayment received ----
+    get settleSteps() {
+      return ['accountId', 'amount'];
+    },
+    settleFilled(key) {
+      return this.stepFilled(this.settle, key);
+    },
+    settleStepOpen(key) {
+      return this.stepOpen(this.settle, this.settleSteps, key);
+    },
+    get settleDetailsOpen() {
+      return this.stepsDone(this.settle, this.settleSteps);
+    },
+    onSettleAccountPicked() {
+      this.prefillSettleAmount(); // outstanding, in THAT account's currency
+      this.focusField('settleAmount');
+    },
+
+    // ---- Savings goals ----
+    get goalSteps() {
+      return ['name', 'accountId', 'targetAmount'];
+    },
+    goalFilled(key) {
+      return this.stepFilled(this.goal, key);
+    },
+    goalStepOpen(key) {
+      return this.stepOpen(this.goal, this.goalSteps, key);
+    },
+    get goalDetailsOpen() {
+      return this.stepsDone(this.goal, this.goalSteps);
+    },
+
+    // ---- Accounts ----
+    get acctSteps() {
+      return ['name', 'type', 'balance'];
+    },
+    acctFilled(key) {
+      return this.stepFilled(this.acct, key);
+    },
+    acctStepOpen(key) {
+      return this.stepOpen(this.acct, this.acctSteps, key);
+    },
+    get acctDetailsOpen() {
+      return this.stepsDone(this.acct, this.acctSteps);
+    },
+
     saveTx() {
       const amount = Number(this.tx.amount);
       if (!(amount > 0)) return this.flash('Enter an amount greater than 0');
@@ -772,9 +870,9 @@ document.addEventListener('alpine:init', () => {
     },
     openSettle(tx) {
       if (fin.owedOn(this.data, tx) <= 0.005) return;
-      const target = this.assetAccounts[0] || this.data.accounts[0];
-      this.settle = { txId: tx.id, accountId: target?.id || '', amount: '', date: today() };
-      this.prefillSettleAmount();
+      // Which account it landed in is the first question, not an assumption —
+      // repayments often arrive somewhere other than the account that paid.
+      this.settle = { txId: tx.id, accountId: '', amount: '', date: today() };
       this.settleModal = true;
     },
     get settleTx() {
@@ -935,7 +1033,6 @@ document.addEventListener('alpine:init', () => {
     openAddGoal() {
       if (!this.spendableAssets.length) return this.flash('Add a bank or cash account first 🙂');
       this.goal = blankGoal();
-      this.goal.accountId = this.spendableAssets[0].id;
       this.goalModal = true;
     },
     openEditGoal(g) {
@@ -1024,7 +1121,6 @@ document.addEventListener('alpine:init', () => {
     openAddRecurring() {
       if (!this.hasAccounts) return this.flash('Add an account first 🙂');
       this.rec = blankRecurring();
-      this.rec.accountId = this.data.accounts[0].id;
       this.rec.category = this.defaultRecurringCategory;
       this.recurringModal = true;
     },
@@ -1034,16 +1130,23 @@ document.addEventListener('alpine:init', () => {
         amount: String(item.amount),
         split: fin.isSplit(item),
         myShare: item.myShare != null ? String(item.myShare) : '',
+        catAuto: false, // you already chose this item's category
+        catVia: null,
       };
       this.recurringModal = true;
     },
     setRecKind(kind) {
+      const was = this.rec.kind;
       this.rec.kind = kind;
       if (kind === 'income' && (!this.rec.category || this.rec.category === this.defaultRecurringCategory)) this.rec.category = 'Income';
       if (kind === 'expense' && this.rec.category === 'Income') this.rec.category = this.defaultRecurringCategory;
-      if (kind === 'transfer' && (!this.rec.toAccountId || this.rec.toAccountId === this.rec.accountId)) {
-        this.rec.toAccountId = this.data.accounts.find((a) => a.id !== this.rec.accountId)?.id || '';
+      if (kind === 'income') this.rec.catAuto = false; // always the Income category
+      if (kind === 'expense' && was !== 'expense' && !this.rec.id) {
+        this.rec.catAuto = true;
+        this.guessRecCategory();
       }
+      // Never assume where the money goes — that's its own step.
+      if (kind === 'transfer' && this.rec.toAccountId === this.rec.accountId) this.rec.toAccountId = '';
     },
     saveRecurring() {
       const name = this.rec.name.trim();

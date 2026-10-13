@@ -496,62 +496,82 @@
     <footer class="footer">Everything is saved on this computer. Back up now &amp; then. 🧸</footer>
   </main>
 
-  <!-- ===== Account modal ===== -->
+  <!-- ===== Account modal (guided: each field unlocks the next) ===== -->
   <div class="overlay" x-show="accountModal" @click.self="accountModal = false" x-cloak>
     <div class="modal">
       <h3 x-text="acct.id ? 'Edit account' : 'Add account'"></h3>
-      <label class="field"><span>Name</span>
-        <input type="text" x-model="acct.name" placeholder="e.g. Chase Checking" @keydown.enter="saveAccount()" />
+
+      <label class="field step" :class="{ done: acctFilled('name') }">
+        <span class="step-label">
+          <span>What's it called?</span>
+          <b class="step-check" x-show="acctFilled('name')">✓</b>
+        </span>
+        <input type="text" x-model="acct.name" placeholder="e.g. Chase Checking"
+               @keydown.enter.prevent="focusField('acctType')" />
       </label>
-      <label class="field"><span>Type</span>
-        <select x-model="acct.type">
+
+      <label class="field step" x-show="acctStepOpen('type')" :class="{ done: acctFilled('type') }">
+        <span class="step-label">
+          <span>What kind of account?</span>
+          <b class="step-check" x-show="acctFilled('type')">✓</b>
+        </span>
+        <select x-model="acct.type" x-ref="acctType" @change="focusField('acctBalance')">
           <template x-for="t in types" :key="t.value"><option :value="t.value" x-text="t.label"></option></template>
         </select>
       </label>
-      <div class="field"><span>Icon</span>
-        <div class="emoji-grid">
-          <template x-for="e in emojis" :key="e">
-            <button type="button" class="emoji-opt" :class="{ picked: acct.emoji === e }" @click="acct.emoji = e" x-text="e"></button>
-          </template>
-        </div>
-      </div>
-      <div class="field-row">
+
+      <div class="field-row" x-show="acctStepOpen('balance')">
         <label class="field"><span>Currency</span>
           <select x-model="acct.currency">
             <template x-for="c in currencies" :key="c"><option :value="c" x-text="c"></option></template>
           </select>
         </label>
-        <label class="field">
-          <span x-text="acct.type === 'credit' ? 'Amount owed now' : 'Balance'"></span>
-          <input type="number" step="any" x-model="acct.balance" placeholder="0.00" @keydown.enter="saveAccount()" />
+        <label class="field step" :class="{ done: acctFilled('balance') }">
+          <span class="step-label">
+            <span x-text="acct.type === 'credit' ? 'Amount owed now' : 'How much is in it?'"></span>
+            <b class="step-check" x-show="acctFilled('balance')">✓</b>
+          </span>
+          <input type="number" step="any" x-model="acct.balance" x-ref="acctBalance" placeholder="0.00"
+                 @keydown.enter="saveAccount()" />
         </label>
       </div>
-      <label class="field" x-show="acct.type === 'credit'"><span>Credit limit (optional)</span>
-        <input type="number" step="any" x-model="acct.creditLimit" placeholder="e.g. 2000" />
-      </label>
-      <div class="field-row" x-show="acct.type === 'savings' || acct.type === 'cd'">
-        <label class="field"><span>Interest rate (APY %)</span>
-          <input type="number" step="any" x-model="acct.interestRate" placeholder="e.g. 4.2" />
+
+      <div class="step-rest" x-show="acctDetailsOpen">
+        <div class="field"><span>Icon</span>
+          <div class="emoji-grid">
+            <template x-for="e in emojis" :key="e">
+              <button type="button" class="emoji-opt" :class="{ picked: acct.emoji === e }" @click="acct.emoji = e" x-text="e"></button>
+            </template>
+          </div>
+        </div>
+        <label class="field" x-show="acct.type === 'credit'"><span>Credit limit (optional)</span>
+          <input type="number" step="any" x-model="acct.creditLimit" placeholder="e.g. 2000" />
         </label>
-        <label class="field" x-show="acct.type === 'cd'"><span>Matures on</span>
-          <input type="date" x-model="acct.maturityDate" />
+        <div class="field-row" x-show="acct.type === 'savings' || acct.type === 'cd'">
+          <label class="field"><span>Interest rate (APY %)</span>
+            <input type="number" step="any" x-model="acct.interestRate" placeholder="e.g. 4.2" />
+          </label>
+          <label class="field" x-show="acct.type === 'cd'"><span>Matures on</span>
+            <input type="date" x-model="acct.maturityDate" />
+          </label>
+        </div>
+        <label class="field" x-show="acct.type === 'investment'"><span>Total contributed (cost basis, optional)</span>
+          <input type="number" step="any" x-model="acct.costBasis" placeholder="what you put in — shows gain/loss" />
         </label>
+        <label class="field" x-show="acct.type === 'retirement'"><span>Available from age</span>
+          <input type="number" step="0.5" x-model="acct.unlockAge" placeholder="59.5" />
+        </label>
+        <p class="hint" x-show="acct.type === 'retirement' && !data.settings.birthDate">
+          🎂 Set your birth date in ⚙️ Settings so I can count down to unlock day.
+        </p>
+        <p class="hint" x-show="acct.type === 'cd'">
+          🔒 CD money counts in your net worth but is treated as locked until the maturity date.
+        </p>
       </div>
-      <label class="field" x-show="acct.type === 'investment'"><span>Total contributed (cost basis, optional)</span>
-        <input type="number" step="any" x-model="acct.costBasis" placeholder="what you put in — shows gain/loss" />
-      </label>
-      <label class="field" x-show="acct.type === 'retirement'"><span>Available from age</span>
-        <input type="number" step="0.5" x-model="acct.unlockAge" placeholder="59.5" />
-      </label>
-      <p class="hint" x-show="acct.type === 'retirement' && !data.settings.birthDate">
-        🎂 Set your birth date in ⚙️ Settings so I can count down to unlock day.
-      </p>
-      <p class="hint" x-show="acct.type === 'cd'">
-        🔒 CD money counts in your net worth but is treated as locked until the maturity date.
-      </p>
+
       <div class="modal-actions">
         <button class="btn" @click="accountModal = false">Cancel</button>
-        <button class="btn btn-primary" @click="saveAccount()">Save</button>
+        <button class="btn btn-primary" @click="saveAccount()" :disabled="!acctDetailsOpen">Save</button>
       </div>
     </div>
   </div>
@@ -569,7 +589,6 @@
       <!-- Step 1 — which account? -->
       <label class="field step" :class="{ done: txFilled('accountId') }">
         <span class="step-label">
-          <i class="step-num" x-text="txStepNum('accountId')"></i>
           <span x-text="tx.kind === 'transfer' ? 'From account' : (tx.kind === 'income' ? 'Into account' : 'Account')"></span>
           <b class="step-check" x-show="txFilled('accountId')">✓</b>
         </span>
@@ -585,11 +604,10 @@
       <label class="field step" x-show="tx.kind === 'transfer' && txStepOpen('toAccountId')"
              :class="{ done: txFilled('toAccountId') }">
         <span class="step-label">
-          <i class="step-num" x-text="txStepNum('toAccountId')"></i>
           <span>To account</span>
           <b class="step-check" x-show="txFilled('toAccountId')">✓</b>
         </span>
-        <select x-model="tx.toAccountId" @change="focusTxField('txAmount')">
+        <select x-model="tx.toAccountId" @change="focusField('txAmount')">
           <option value="" disabled>Which account receives it?…</option>
           <template x-for="a in data.accounts.filter(x => x.id !== tx.accountId)" :key="a.id">
             <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
@@ -600,19 +618,17 @@
       <!-- Step 3 — how much? -->
       <label class="field step" x-show="txStepOpen('amount')" :class="{ done: txFilled('amount') }">
         <span class="step-label">
-          <i class="step-num" x-text="txStepNum('amount')"></i>
           <span>How much?</span>
           <b class="step-check" x-show="txFilled('amount')">✓</b>
         </span>
         <input type="number" step="any" x-model="tx.amount" x-ref="txAmount" placeholder="0.00"
-               @keydown.enter.prevent="txDetailsOpen ? focusTxField('txTitle') : null" />
+               @keydown.enter.prevent="txDetailsOpen ? focusField('txTitle') : null" />
       </label>
 
       <!-- The tail: title drives the category guess; everything here is adjustable -->
       <div class="step-rest" x-show="txDetailsOpen">
         <label class="field step" :class="{ done: txFilled('note') }">
           <span class="step-label">
-            <i class="step-num" x-text="txStepTotal"></i>
             <span x-text="tx.kind === 'transfer' ? 'What is this for?' : 'What was it for?'"></span>
             <b class="step-check" x-show="txFilled('note')">✓</b>
           </span>
@@ -775,34 +791,56 @@
     </div>
   </div>
 
-  <!-- ===== Goal modal ===== -->
+  <!-- ===== Goal modal (guided: each field unlocks the next) ===== -->
   <div class="overlay" x-show="goalModal" @click.self="goalModal = false" x-cloak>
     <div class="modal">
       <h3 x-text="goal.id ? 'Edit goal' : 'New savings goal'"></h3>
-      <label class="field"><span>Goal name</span>
-        <input type="text" x-model="goal.name" placeholder="e.g. Vacation" @keydown.enter="saveGoal()" />
+
+      <label class="field step" :class="{ done: goalFilled('name') }">
+        <span class="step-label">
+          <span>What are you saving for?</span>
+          <b class="step-check" x-show="goalFilled('name')">✓</b>
+        </span>
+        <input type="text" x-model="goal.name" placeholder="e.g. Vacation"
+               @keydown.enter.prevent="focusField('goalAccount')" />
       </label>
-      <div class="field"><span>Icon</span>
-        <div class="emoji-grid">
-          <template x-for="e in goalEmojis" :key="e">
-            <button type="button" class="emoji-opt" :class="{ picked: goal.emoji === e }" @click="goal.emoji = e" x-text="e"></button>
-          </template>
-        </div>
-      </div>
-      <label class="field"><span>Funded from</span>
-        <select x-model="goal.accountId">
+
+      <label class="field step" x-show="goalStepOpen('accountId')" :class="{ done: goalFilled('accountId') }">
+        <span class="step-label">
+          <span>Funded from</span>
+          <b class="step-check" x-show="goalFilled('accountId')">✓</b>
+        </span>
+        <select x-model="goal.accountId" x-ref="goalAccount" @change="focusField('goalTarget')">
+          <option value="" disabled>Which account holds this money?…</option>
           <template x-for="a in spendableAssets" :key="a.id">
             <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
           </template>
         </select>
       </label>
-      <label class="field"><span>Target amount</span>
-        <input type="number" step="any" x-model="goal.targetAmount" placeholder="2000" @keydown.enter="saveGoal()" />
+
+      <label class="field step" x-show="goalStepOpen('targetAmount')" :class="{ done: goalFilled('targetAmount') }">
+        <span class="step-label">
+          <span>How much do you need?</span>
+          <b class="step-check" x-show="goalFilled('targetAmount')">✓</b>
+        </span>
+        <input type="number" step="any" x-model="goal.targetAmount" x-ref="goalTarget" placeholder="2000"
+               @keydown.enter="saveGoal()" />
       </label>
-      <p class="hint">Reserving money for a goal earmarks part of that account — it doesn't move money or change your net worth.</p>
+
+      <div class="step-rest" x-show="goalDetailsOpen">
+        <div class="field"><span>Icon</span>
+          <div class="emoji-grid">
+            <template x-for="e in goalEmojis" :key="e">
+              <button type="button" class="emoji-opt" :class="{ picked: goal.emoji === e }" @click="goal.emoji = e" x-text="e"></button>
+            </template>
+          </div>
+        </div>
+        <p class="hint">Reserving money for a goal earmarks part of that account — it doesn't move money or change your net worth.</p>
+      </div>
+
       <div class="modal-actions">
         <button class="btn" @click="goalModal = false">Cancel</button>
-        <button class="btn btn-primary" @click="saveGoal()">Save</button>
+        <button class="btn btn-primary" @click="saveGoal()" :disabled="!goalDetailsOpen">Save</button>
       </div>
     </div>
   </div>
@@ -825,7 +863,7 @@
     </div>
   </div>
 
-  <!-- ===== Recurring modal ===== -->
+  <!-- ===== Recurring modal (guided: each field unlocks the next) ===== -->
   <div class="overlay" x-show="recurringModal" @click.self="recurringModal = false" x-cloak>
     <div class="modal">
       <h3 x-text="rec.id ? 'Edit recurring item' : 'New recurring item'"></h3>
@@ -834,78 +872,111 @@
         <button :class="{ active: rec.kind === 'income' }" @click="setRecKind('income')">Income</button>
         <button :class="{ active: rec.kind === 'transfer' }" @click="setRecKind('transfer')">Transfer</button>
       </div>
-      <label class="field"><span>Name</span>
-        <input type="text" x-model="rec.name" placeholder="e.g. Rent, Salary, Netflix" @keydown.enter="saveRecurring()" />
+
+      <label class="field step" :class="{ done: recFilled('name') }">
+        <span class="step-label">
+          <span>What is it?</span>
+          <b class="step-check" x-show="recFilled('name')">✓</b>
+        </span>
+        <input type="text" x-model="rec.name" placeholder="e.g. Rent, Salary, Netflix"
+               @input="guessRecCategory()" @keydown.enter.prevent="onRecNameInput()" />
+        <small class="hint" x-show="!rec.id && rec.kind === 'expense'">Naming it lets the category fill itself in.</small>
       </label>
-      <label class="field"><span x-text="rec.kind === 'transfer' ? 'From account' : 'Account'"></span>
-        <select x-model="rec.accountId">
+
+      <label class="field step" x-show="recStepOpen('accountId')" :class="{ done: recFilled('accountId') }">
+        <span class="step-label">
+          <span x-text="rec.kind === 'transfer' ? 'From account' : (rec.kind === 'income' ? 'Into account' : 'Which account pays it?')"></span>
+          <b class="step-check" x-show="recFilled('accountId')">✓</b>
+        </span>
+        <select x-model="rec.accountId" x-ref="recAccount" @change="onRecAccountPicked()">
+          <option value="" disabled>Choose an account…</option>
           <template x-for="a in data.accounts" :key="a.id">
             <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
           </template>
         </select>
       </label>
-      <label class="field" x-show="rec.kind === 'transfer'"><span>To account</span>
-        <select x-model="rec.toAccountId">
+
+      <label class="field step" x-show="rec.kind === 'transfer' && recStepOpen('toAccountId')"
+             :class="{ done: recFilled('toAccountId') }">
+        <span class="step-label">
+          <span>To account</span>
+          <b class="step-check" x-show="recFilled('toAccountId')">✓</b>
+        </span>
+        <select x-model="rec.toAccountId" @change="focusField('recAmount')">
+          <option value="" disabled>Which account receives it?…</option>
           <template x-for="a in data.accounts.filter(x => x.id !== rec.accountId)" :key="a.id">
             <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
           </template>
         </select>
       </label>
-      <div class="field-row">
-        <label class="field"><span>Amount</span>
-          <input type="number" step="any" x-model="rec.amount" placeholder="0.00" />
-        </label>
-        <label class="field"><span>Repeats</span>
-          <select x-model="rec.cadence">
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
-          </select>
-        </label>
-      </div>
-      <div class="field-row">
-        <label class="field" x-show="rec.kind !== 'transfer'"><span>Category</span>
-          <select x-model="rec.category">
+
+      <label class="field step" x-show="recStepOpen('amount')" :class="{ done: recFilled('amount') }">
+        <span class="step-label">
+          <span>How much each time?</span>
+          <b class="step-check" x-show="recFilled('amount')">✓</b>
+        </span>
+        <input type="number" step="any" x-model="rec.amount" x-ref="recAmount" placeholder="0.00" />
+      </label>
+
+      <div class="step-rest" x-show="recDetailsOpen">
+        <div class="field-row">
+          <label class="field"><span>Repeats</span>
+            <select x-model="rec.cadence">
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </label>
+          <label class="field"><span>Next date</span>
+            <input type="date" x-model="rec.nextDate" />
+          </label>
+        </div>
+
+        <label class="field" x-show="rec.kind !== 'transfer'">
+          <span class="step-label">
+            <span>Category</span>
+            <b class="auto-badge" x-show="rec.kind !== 'transfer' && rec.catAuto && !!rec.catVia" x-text="recCatAutoLabel"></b>
+          </span>
+          <select x-model="rec.category" @change="onRecCategoryPicked()">
             <template x-for="c in categories" :key="c.name">
               <option :value="c.name" x-text="`${c.emoji} ${c.name}`"></option>
             </template>
           </select>
         </label>
-        <label class="field"><span>Next date</span>
-          <input type="date" x-model="rec.nextDate" />
-        </label>
-      </div>
-      <div class="split-box" x-show="rec.kind === 'expense'">
-        <label class="split-toggle">
-          <input type="checkbox" x-model="rec.split" />
-          <span>🤝 Split with others — I'm only paying part of this</span>
-        </label>
-        <div x-show="rec.split">
-          <div class="field-row">
-            <label class="field"><span>My share</span>
-              <input type="number" step="any" x-model="rec.myShare" placeholder="0.00" />
-            </label>
-            <div class="field">
-              <span>Split evenly</span>
-              <div class="split-quick">
-                <button type="button" class="minibtn" @click="quickSplit(rec, 2)">÷2</button>
-                <button type="button" class="minibtn" @click="quickSplit(rec, 3)">÷3</button>
-                <button type="button" class="minibtn" @click="quickSplit(rec, 4)">÷4</button>
+
+        <div class="split-box" x-show="rec.kind === 'expense'">
+          <label class="split-toggle">
+            <input type="checkbox" x-model="rec.split" />
+            <span>🤝 Split with others — I'm only paying part of this</span>
+          </label>
+          <div x-show="rec.split">
+            <div class="field-row">
+              <label class="field"><span>My share</span>
+                <input type="number" step="any" x-model="rec.myShare" placeholder="0.00" />
+              </label>
+              <div class="field">
+                <span>Split evenly</span>
+                <div class="split-quick">
+                  <button type="button" class="minibtn" @click="quickSplit(rec, 2)">÷2</button>
+                  <button type="button" class="minibtn" @click="quickSplit(rec, 3)">÷3</button>
+                  <button type="button" class="minibtn" @click="quickSplit(rec, 4)">÷4</button>
+                </div>
               </div>
             </div>
+            <p class="hint" x-show="splitOwedHint(rec)" x-text="splitOwedHint(rec)"></p>
+            <p class="hint">Only your share counts toward budgets; the full amount still leaves the account.</p>
           </div>
-          <p class="hint" x-show="splitOwedHint(rec)" x-text="splitOwedHint(rec)"></p>
-          <p class="hint">Only your share counts toward budgets; the full amount still leaves the account.</p>
         </div>
       </div>
+
       <div class="modal-actions">
         <button class="btn" @click="recurringModal = false">Cancel</button>
-        <button class="btn btn-primary" @click="saveRecurring()">Save</button>
+        <button class="btn btn-primary" @click="saveRecurring()" :disabled="!recDetailsOpen">Save</button>
       </div>
     </div>
   </div>
 
-  <!-- ===== Settle (mark repayment received) modal ===== -->
+  <!-- ===== Settle (mark repayment received) modal — guided ===== -->
   <div class="overlay" x-show="settleModal" @click.self="settleModal = false" x-cloak>
     <div class="modal" x-show="settleTx">
       <h3>Mark received 🤝</h3>
@@ -914,25 +985,40 @@
         <strong x-text="settleTx?.note || settleTx?.category || 'this expense'"></strong>.
         It won't count as income or change your budgets — it's your own money returning.
       </p>
-      <label class="field"><span>Landed in which account?</span>
-        <select x-model="settle.accountId" @change="prefillSettleAmount()">
+      <p class="hint">Outstanding: <strong x-text="fmt(settleOutstanding(), settle.accountId ? (data.accounts.find(a => a.id === settle.accountId)?.currency || baseCurrency) : baseCurrency)"></strong> — pay it back in parts if you like.</p>
+
+      <label class="field step" :class="{ done: settleFilled('accountId') }">
+        <span class="step-label">
+          <span>Landed in which account?</span>
+          <b class="step-check" x-show="settleFilled('accountId')">✓</b>
+        </span>
+        <select x-model="settle.accountId" @change="onSettleAccountPicked()">
+          <option value="" disabled>Where did the money arrive?…</option>
           <template x-for="a in data.accounts" :key="a.id">
             <option :value="a.id" x-text="`${a.emoji} ${a.name} (${a.currency})`"></option>
           </template>
         </select>
       </label>
-      <div class="field-row">
-        <label class="field"><span>Amount received</span>
-          <input type="number" step="any" x-model="settle.amount" @keydown.enter="saveSettle()" />
-        </label>
+
+      <label class="field step" x-show="settleStepOpen('amount')" :class="{ done: settleFilled('amount') }">
+        <span class="step-label">
+          <span>How much came back?</span>
+          <b class="step-check" x-show="settleFilled('amount')">✓</b>
+        </span>
+        <input type="number" step="any" x-model="settle.amount" x-ref="settleAmount"
+               @keydown.enter="saveSettle()" />
+        <small class="hint">Filled in with what's outstanding — change it for a partial repayment.</small>
+      </label>
+
+      <div class="step-rest" x-show="settleDetailsOpen">
         <label class="field"><span>Date</span>
           <input type="date" x-model="settle.date" />
         </label>
       </div>
-      <p class="hint">Outstanding: <strong x-text="fmt(settleOutstanding(), settle.accountId ? (data.accounts.find(a => a.id === settle.accountId)?.currency || baseCurrency) : baseCurrency)"></strong> — pay it back in parts if you like.</p>
+
       <div class="modal-actions">
         <button class="btn" @click="settleModal = false">Cancel</button>
-        <button class="btn btn-primary" @click="saveSettle()">Record it</button>
+        <button class="btn btn-primary" @click="saveSettle()" :disabled="!settleDetailsOpen">Record it</button>
       </div>
     </div>
   </div>
