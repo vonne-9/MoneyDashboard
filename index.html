@@ -448,7 +448,9 @@
             <p class="hint" x-show="monthCategoryRows.length">
               Measured against the budgets you have set today. Split expenses count only your share.
             </p>
-            <div x-show="!monthCategoryRows.length" class="muted">Nothing spent this month.</div>
+            <template x-if="!monthCategoryRows.length">
+              <div class="muted">Nothing spent this month.</div>
+            </template>
             <template x-for="row in monthCategoryRows" :key="row.name">
               <div class="cat">
                 <div class="cat-row">
@@ -478,8 +480,35 @@
             <div class="card-head">
               <h3 x-text="`Expenses in ${monthLabel(selectedMonth)}`"></h3>
             </div>
-            <div x-show="!monthEntries.length" class="muted">No expenses logged this month.</div>
-            <template x-for="t in monthEntries" :key="t.id">
+
+            <div class="tx-filters" x-show="monthEntries.length > 0">
+              <select x-model="monthCat">
+                <option value="">All categories</option>
+                <template x-for="c in monthCatOptions" :key="c.name">
+                  <option :value="c.name" x-text="`${c.emoji} ${c.name}`"></option>
+                </template>
+              </select>
+              <select x-model="monthSort">
+                <option value="date-desc">Newest first</option>
+                <option value="date-asc">Oldest first</option>
+                <option value="amount-desc">Biggest first</option>
+                <option value="amount-asc">Smallest first</option>
+              </select>
+              <button class="minibtn" x-show="monthFilterActive" @click="clearMonthFilter()">✕ Clear</button>
+            </div>
+            <div class="filter-summary" x-show="monthCat">
+              <span x-text="`${monthEntriesView.length} of ${monthEntries.length} ${monthEntries.length === 1 ? 'entry' : 'entries'}`"></span>
+              <span>·</span>
+              <strong x-text="`${fmtBase(monthViewTotal)} counted`"></strong>
+            </div>
+
+            <template x-if="!monthEntries.length">
+              <div class="muted">No expenses logged this month.</div>
+            </template>
+            <template x-if="monthEntries.length && !monthEntriesView.length">
+              <div class="muted">Nothing in that category this month 🔍 — try clearing the filter.</div>
+            </template>
+            <template x-for="t in monthEntriesView" :key="t.id">
               <div class="tx">
                 <div class="tx-left">
                   <span class="tx-emoji" x-text="categoryEmoji(t.category)"></span>

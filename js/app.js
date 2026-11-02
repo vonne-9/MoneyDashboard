@@ -107,6 +107,8 @@ document.addEventListener('alpine:init', () => {
     catDeletePending: null, // category name armed for delete (in-modal confirm)
     txFilter: { accountId: '', category: '', q: '' },
     monthSel: '', // Monthly page: selected "YYYY-MM" ('' follows the current month)
+    monthCat: '', // Monthly page: category filter ('' = all)
+    monthSort: 'date-desc', // date-desc | date-asc | amount-desc | amount-asc
     settleModal: false,
     settle: { txId: '', accountId: '', amount: '', date: today() },
     txLimit: 40,
@@ -1119,6 +1121,47 @@ document.addEventListener('alpine:init', () => {
       return this.data.transactions
         .filter((t) => t.kind === 'expense' && fin.monthKey(t.date) === this.selectedMonth)
         .sort((a, b) => (b.date.localeCompare(a.date)) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    },
+    // Categories that actually appear this month — plus whatever is currently
+    // filtered on, so switching months never leaves the select showing a
+    // value that isn't in its own list.
+    get monthCatOptions() {
+      const names = [...new Set(this.monthEntries.map((t) => t.category || 'Other'))];
+      if (this.monthCat && !names.includes(this.monthCat)) names.push(this.monthCat);
+      return this.data.categories.filter((c) => names.includes(c.name));
+    },
+    // Sorted by the amount shown in the list (the full charge), so the order
+    // always matches the numbers you can see.
+    get monthEntriesView() {
+      const rows = this.monthCat
+        ? this.monthEntries.filter((t) => (t.category || 'Other') === this.monthCat)
+        : [...this.monthEntries];
+      const byDate = (a, b) => a.date.localeCompare(b.date)
+        || String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+      const byAmount = (a, b) => (Number(a.amount) || 0) - (Number(b.amount) || 0);
+      const sorters = {
+        'date-desc': (a, b) => byDate(b, a),
+        'date-asc': byDate,
+        'amount-desc': (a, b) => byAmount(b, a) || byDate(b, a),
+        'amount-asc': (a, b) => byAmount(a, b) || byDate(b, a),
+      };
+      return rows.sort(sorters[this.monthSort] || sorters['date-desc']);
+    },
+    // What the rows on screen add up to — your share, like every other total here.
+    get monthViewTotal() {
+      return this.monthEntriesView.reduce((sum, t) => {
+        const acct = fin.accountById(this.data, t.accountId);
+        if (!acct) return sum;
+        const inBase = fx.toBase(fin.realCost(t), acct.currency, this.data);
+        return inBase === null ? sum : sum + inBase;
+      }, 0);
+    },
+    get monthFilterActive() {
+      return !!this.monthCat || this.monthSort !== 'date-desc';
+    },
+    clearMonthFilter() {
+      this.monthCat = '';
+      this.monthSort = 'date-desc';
     },
     drawMonthlyChart() {
       renderMonthlyBars(

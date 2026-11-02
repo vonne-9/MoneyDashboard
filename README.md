@@ -46,7 +46,10 @@ A **side menu** (left on desktop, a ☰ drawer on mobile) switches between five 
   - **By category 🏷️** — what you spent per category against its budget, with a fill bar, an
     **OVER** flag, and the exact gap either way ("$190.00 over · 138% of budget", or "$100.00 left ·
     90% used"). Categories are sorted biggest-first and totalled at the bottom.
-  - **The expenses themselves**, newest first, so you can see what drove the number.
+  - **The expenses themselves**, with a **category filter** and a **sort** (newest, oldest, biggest
+    or smallest first). Filtering shows how many of the month's entries match and what they come
+    to — "3 of 6 entries · $690.00 counted" — while the headline above keeps reporting the whole
+    month.
 
   Months are measured against the budgets you have set **today**, and split expenses count only
   **your share** — the same rule the budget bars use, so the two pages always agree.
