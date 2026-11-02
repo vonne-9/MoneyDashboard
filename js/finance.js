@@ -86,6 +86,23 @@ export function monthKey(dateStr) {
   return (dateStr || '').slice(0, 7); // "YYYY-MM"
 }
 
+// --- Total expenses per month, keyed "YYYY-MM" ---
+// Same rules as spendByCategory: expenses only, your share only, base currency.
+export function monthlyExpenseTotals(data) {
+  const byMonth = {};
+  for (const tx of data.transactions) {
+    if (tx.kind !== 'expense') continue;
+    const ym = monthKey(tx.date);
+    if (!ym) continue;
+    const acct = accountById(data, tx.accountId);
+    if (!acct) continue;
+    const inBase = toBase(realCost(tx), acct.currency, data);
+    if (inBase === null) continue;
+    byMonth[ym] = (byMonth[ym] || 0) + inBase;
+  }
+  return byMonth;
+}
+
 // --- Savings goals: money reserved (earmarked) inside an account ---
 // Goals don't move money or change net worth; they carve part of an account's
 // balance into "reserved", leaving the rest as spendable "available".

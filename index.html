@@ -382,6 +382,130 @@
     </section>
 
     <!-- ============ GOALS ============ -->
+    <!-- ===== Monthly review ===== -->
+    <section x-show="view === 'monthly'">
+      <div class="page-head">
+        <h2>Monthly 📅</h2>
+        <div class="month-pick">
+          <button class="minibtn" @click="selectMonth(shiftMonth(selectedMonth, -1))"
+                  :disabled="!canGoPrevMonth" title="Previous month">◀</button>
+          <select class="month-select" x-model="monthSel" @change="selectMonth(monthSel)">
+            <template x-for="m in monthOptions" :key="m.key">
+              <option :value="m.key" x-text="monthLabel(m.key)"></option>
+            </template>
+          </select>
+          <button class="minibtn" @click="selectMonth(shiftMonth(selectedMonth, 1))"
+                  :disabled="!canGoNextMonth" title="Next month">▶</button>
+        </div>
+      </div>
+
+      <div x-show="!hasAccounts" class="card muted">
+        Add an account on the Overview page first, then log some spending.
+        <button class="btn btn-sm" @click="setView('overview')">Go to Overview</button>
+      </div>
+
+      <template x-if="hasAccounts">
+        <div>
+          <!-- the month's headline -->
+          <section class="card month-hero">
+            <div class="month-hero-main">
+              <div class="month-hero-label" x-text="`Spent in ${monthLabel(selectedMonth)}`"></div>
+              <div class="month-hero-total" x-text="fmtBase(selectedMonthTotal)"></div>
+              <div class="month-delta" x-show="monthDelta">
+                <span :class="monthDelta?.up ? 'delta-up' : 'delta-down'"
+                      x-text="monthDelta ? `${monthDelta.up ? '▲' : '▼'} ${fmtBase(Math.abs(monthDelta.diff))} (${Math.abs(monthDelta.pct)}%)` : ''"></span>
+                <span class="muted" x-text="`vs ${monthLabel(shiftMonth(selectedMonth, -1))}`"></span>
+              </div>
+              <div class="month-delta muted" x-show="!monthDelta">Nothing logged the month before, so there's nothing to compare yet.</div>
+            </div>
+            <div class="month-hero-side">
+              <div class="mini-stat">
+                <span class="mini-stat-num" x-text="monthEntries.length"></span>
+                <span class="mini-stat-label" x-text="monthEntries.length === 1 ? 'entry' : 'entries'"></span>
+              </div>
+              <div class="mini-stat" :class="{ bad: monthOverRows.length }">
+                <span class="mini-stat-num" x-text="monthOverRows.length"></span>
+                <span class="mini-stat-label">over budget</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- month-by-month comparison -->
+          <section class="card">
+            <div class="card-head">
+              <h3>Month by month 📊</h3>
+              <span class="muted small">Tap a bar to jump to that month</span>
+            </div>
+            <div class="chart-wrap month-chart"><canvas x-ref="monthChart"></canvas></div>
+          </section>
+
+          <!-- per-category, against the budget -->
+          <section class="card">
+            <div class="card-head">
+              <h3>By category 🏷️</h3>
+              <button class="minibtn" @click="budgetsModal = true">Set budgets</button>
+            </div>
+            <p class="hint" x-show="monthCategoryRows.length">
+              Measured against the budgets you have set today. Split expenses count only your share.
+            </p>
+            <div x-show="!monthCategoryRows.length" class="muted">Nothing spent this month.</div>
+            <template x-for="row in monthCategoryRows" :key="row.name">
+              <div class="cat">
+                <div class="cat-row">
+                  <span><span x-text="row.emoji"></span> <span x-text="row.name"></span>
+                    <span class="over-tag" x-show="row.over">over!</span>
+                  </span>
+                  <span x-text="row.limit > 0 ? `${fmtBase(row.spent)} / ${fmtBase(row.limit)}` : fmtBase(row.spent)"></span>
+                </div>
+                <div class="bar" x-show="row.limit > 0"><i :style="`width:${barWidth(row.pct)};background:${barColor(row)}`"></i></div>
+                <div class="cat-note">
+                  <span x-show="row.limit > 0 && !row.over" class="ok-text"
+                        x-text="`${fmtBase(row.left)} left · ${row.pct}% used`"></span>
+                  <span x-show="row.over" class="bad-text"
+                        x-text="`${fmtBase(-row.left)} over · ${row.pct}% of budget`"></span>
+                  <span x-show="row.limit <= 0" class="muted">no budget set</span>
+                </div>
+              </div>
+            </template>
+            <div class="month-cat-total" x-show="monthCategoryRows.length">
+              <span>Total</span>
+              <span x-text="monthBudgetedTotal > 0 ? `${fmtBase(selectedMonthTotal)} / ${fmtBase(monthBudgetedTotal)} budgeted` : fmtBase(selectedMonthTotal)"></span>
+            </div>
+          </section>
+
+          <!-- the entries behind the numbers -->
+          <section class="card">
+            <div class="card-head">
+              <h3 x-text="`Expenses in ${monthLabel(selectedMonth)}`"></h3>
+            </div>
+            <div x-show="!monthEntries.length" class="muted">No expenses logged this month.</div>
+            <template x-for="t in monthEntries" :key="t.id">
+              <div class="tx">
+                <div class="tx-left">
+                  <span class="tx-emoji" x-text="categoryEmoji(t.category)"></span>
+                  <div>
+                    <div class="tx-who" x-text="t.note || t.category"></div>
+                    <div class="tx-sub">
+                      <span x-text="accountName(t.accountId)"></span> ·
+                      <span x-text="t.category"></span> ·
+                      <span x-text="t.date"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="tx-right">
+                  <div class="tx-amounts">
+                    <span class="tx-val expense" x-text="'−' + fmt(t.amount, txCurrency(t))"></span>
+                    <span class="tx-bal" x-show="isSplit(t)"
+                          x-text="`${fmt(realCost(t), txCurrency(t))} yours`"></span>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </section>
+        </div>
+      </template>
+    </section>
+
     <section x-show="view === 'goals'">
       <div class="page-head">
         <h2>Savings goals 🎯</h2>

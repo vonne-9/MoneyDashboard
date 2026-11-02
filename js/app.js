@@ -7,7 +7,7 @@ import * as fin from './finance.js';
 import * as insightsEngine from './insights.js';
 import * as categorize from './categorize.js';
 import * as ai from './ai.js';
-import { renderTrend } from './charts.js';
+import { renderTrend, renderMonthlyBars } from './charts.js';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'AUD', 'CHF', 'INR', 'SGD', 'HKD', 'THB', 'MMK'];
 const EMOJIS = ['🏦', '💰', '💵', '🐷', '💳', '🪙', '💎', '🏠', '✈️', '🎁', '📈', '🧧', '⏳', '🧓', '🌱', '📊'];
@@ -106,6 +106,7 @@ document.addEventListener('alpine:init', () => {
     catDraft: { originalName: null, name: '', emoji: '🏷️' },
     catDeletePending: null, // category name armed for delete (in-modal confirm)
     txFilter: { accountId: '', category: '', q: '' },
+    monthSel: '', // Monthly page: selected "YYYY-MM" ('' follows the current month)
     settleModal: false,
     settle: { txId: '', accountId: '', amount: '', date: today() },
     txLimit: 40,
@@ -140,11 +141,13 @@ document.addEventListener('alpine:init', () => {
       this.view = v;
       this.sidebarOpen = false;
       if (v === 'overview') this.drawChart(); // canvas needs to be visible to size correctly
+      if (v === 'monthly') this.$nextTick(() => this.drawMonthlyChart());
     },
     navItems() {
       return [
         { id: 'overview', label: 'Overview', emoji: '🏠' },
         { id: 'spending', label: 'Spending', emoji: '💸' },
+        { id: 'monthly', label: 'Monthly', emoji: '📅' },
         { id: 'goals', label: 'Goals', emoji: '🎯' },
         { id: 'insights', label: 'Insights', emoji: '💡' },
       ];
@@ -1011,6 +1014,120 @@ document.addEventListener('alpine:init', () => {
       if (value === '' || !Number.isFinite(n) || n <= 0) delete this.data.budgets[cat];
       else this.data.budgets[cat] = n;
       this.persist();
+    },
+
+    // ================= monthly review =================
+    // One month at a time: what it cost, how each category did against its
+    // budget, and where that month sits next to the others.
+    get selectedMonth() {
+      return this.monthSel || this.currentMonth;
+    },
+    selectMonth(ym) {
+      this.monthSel = ym;
+      this.$nextTick(() => this.drawMonthlyChart());
+    },
+    // "2026-10" -> "October 2026" / "Oct 26"
+    monthLabel(ym) {
+      const [y, m] = String(ym || '').split('-').map(Number);
+      if (!y || !m) return ym || '';
+      return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    },
+    monthShort(ym) {
+      const [y, m] = String(ym || '').split('-').map(Number);
+      if (!y || !m) return ym || '';
+      return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+    },
+    shiftMonth(ym, by) {
+      const [y, m] = String(ym).split('-').map(Number);
+      const d = new Date(y, m - 1 + by, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    },
+    get monthlyTotals() {
+      return fin.monthlyExpenseTotals(this.data);
+    },
+    // Every month from the first expense through today — gaps included, so a
+    // quiet month shows as a short bar rather than vanishing from the axis.
+    get monthSeries() {
+      const totals = this.monthlyTotals;
+      const cur = this.currentMonth;
+      const known = [...Object.keys(totals), cur, this.selectedMonth].filter(Boolean).sort();
+      const last = known[known.length - 1];
+      const out = [];
+      let key = known[0];
+      // Guard against a bad date making this run away.
+      for (let i = 0; key <= last && i < 600; i++) {
+        out.push({ key, label: this.monthShort(key), total: totals[key] || 0 });
+        key = this.shiftMonth(key, 1);
+      }
+      return out;
+    },
+    get monthChartRows() {
+      return this.monthSeries.slice(-12); // a year's worth reads cleanly
+    },
+    // Newest first for the picker.
+    get monthOptions() {
+      return [...this.monthSeries].reverse();
+    },
+    get canGoPrevMonth() {
+      return this.monthSeries.some((r) => r.key < this.selectedMonth);
+    },
+    get canGoNextMonth() {
+      return this.selectedMonth < this.currentMonth;
+    },
+    get selectedMonthTotal() {
+      return this.monthlyTotals[this.selectedMonth] || 0;
+    },
+    get prevMonthTotal() {
+      return this.monthlyTotals[this.shiftMonth(this.selectedMonth, -1)] || 0;
+    },
+    // How this month compares with the one before it.
+    get monthDelta() {
+      const now = this.selectedMonthTotal;
+      const was = this.prevMonthTotal;
+      if (was <= 0) return null;
+      const diff = now - was;
+      return { diff, pct: Math.round((diff / was) * 100), up: diff > 0 };
+    },
+    // Per-category: what you spent, the budget, and whether it went over.
+    get monthCategoryRows() {
+      const spend = fin.spendByCategory(this.data, this.selectedMonth);
+      return this.data.categories
+        .filter((c) => this.data.budgets[c.name] > 0 || spend[c.name] > 0)
+        .map((c) => {
+          const limit = Number(this.data.budgets[c.name]) || 0;
+          const spent = spend[c.name] || 0;
+          return {
+            name: c.name,
+            emoji: c.emoji,
+            limit,
+            spent,
+            pct: limit > 0 ? Math.round((spent / limit) * 100) : null,
+            over: limit > 0 && spent > limit,
+            left: limit > 0 ? limit - spent : null,
+          };
+        })
+        .sort((a, b) => b.spent - a.spent);
+    },
+    get monthOverRows() {
+      return this.monthCategoryRows.filter((r) => r.over);
+    },
+    get monthBudgetedTotal() {
+      return this.monthCategoryRows.reduce((sum, r) => sum + r.limit, 0);
+    },
+    // The month's expenses themselves, newest first.
+    get monthEntries() {
+      return this.data.transactions
+        .filter((t) => t.kind === 'expense' && fin.monthKey(t.date) === this.selectedMonth)
+        .sort((a, b) => (b.date.localeCompare(a.date)) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    },
+    drawMonthlyChart() {
+      renderMonthlyBars(
+        this.$refs.monthChart,
+        this.monthChartRows,
+        this.baseCurrency,
+        this.selectedMonth,
+        (key) => this.selectMonth(key),
+      );
     },
 
     // ================= savings goals (envelope: reserve within an account) =================

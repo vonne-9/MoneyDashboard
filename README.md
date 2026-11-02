@@ -25,7 +25,7 @@ included). Note each browser keeps its **own** separate data — move data betwe
 
 ## Getting around
 
-A **side menu** (left on desktop, a ☰ drawer on mobile) switches between four pages:
+A **side menu** (left on desktop, a ☰ drawer on mobile) switches between five pages:
 
 - **🏠 Overview** — net worth, a **per-type totals strip** (how much sits in banks, savings, CDs, …),
   your accounts & cards (**tap any account to see all its transactions**; reorder tiles with the
@@ -38,6 +38,18 @@ A **side menu** (left on desktop, a ☰ drawer on mobile) switches between four 
     row for that tab's spending, and a **Budget vs actual** table per category (Budget, Spent,
     Difference, and an **OK / OVER** status). The tables are styled for readability: **zebra-striped**
     rows, and the **Difference** column is green when under budget / red when over.
+- **📅 Monthly** — one month at a time, for the end-of-month look back (or a mid-month check):
+  - **What it cost** — the month's total, how many entries it took, and how it compares with the
+    month before (**▲ $325.00 (22%) vs September**).
+  - **Month by month 📊** — a bar chart of every month's spending with the **selected month
+    highlighted**; tap any bar to jump to that month.
+  - **By category 🏷️** — what you spent per category against its budget, with a fill bar, an
+    **OVER** flag, and the exact gap either way ("$190.00 over · 138% of budget", or "$100.00 left ·
+    90% used"). Categories are sorted biggest-first and totalled at the bottom.
+  - **The expenses themselves**, newest first, so you can see what drove the number.
+
+  Months are measured against the budgets you have set **today**, and split expenses count only
+  **your share** — the same rule the budget bars use, so the two pages always agree.
 - **🎯 Goals** — your savings goals.
 - **💡 Insights** — financial-literacy health checks computed from your own numbers, plus an
   optional AI deep-dive.

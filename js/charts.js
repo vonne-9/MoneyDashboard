@@ -55,3 +55,62 @@ export function renderTrend(canvas, snapshots, baseCurrency) {
     chart = new Chart(canvas.getContext('2d'), { type: 'line', data, options });
   }
 }
+
+let barChart = null;
+
+// Monthly expense bars. The selected month is filled in; the rest sit back so
+// the comparison reads at a glance. Clicking a bar calls onSelect(monthKey).
+export function renderMonthlyBars(canvas, rows, baseCurrency, selectedKey, onSelect) {
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  const isSel = (r) => r.key === selectedKey;
+  const data = {
+    labels: rows.map((r) => r.label),
+    datasets: [
+      {
+        label: `Spent (${baseCurrency})`,
+        data: rows.map((r) => Math.round(r.total * 100) / 100),
+        backgroundColor: rows.map((r) => (isSel(r) ? '#ff9ec7' : 'rgba(160, 196, 255, 0.55)')),
+        borderColor: '#111',
+        borderWidth: rows.map((r) => (isSel(r) ? 3 : 2)),
+        borderRadius: 6,
+        hoverBackgroundColor: rows.map((r) => (isSel(r) ? '#ff9ec7' : 'rgba(160, 196, 255, 0.85)')),
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    onClick: (_evt, elements) => {
+      if (elements.length && typeof onSelect === 'function') onSelect(rows[elements[0].index].key);
+    },
+    onHover: (evt, elements) => {
+      if (evt?.native?.target) evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => ` ${baseCurrency} ${Number(ctx.raw).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        },
+      },
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: '#111', font: { family: 'Nunito', weight: '700' } } },
+      y: {
+        beginAtZero: true,
+        grid: { color: 'rgba(17,17,17,0.08)' },
+        ticks: { color: '#111', font: { family: 'Nunito', weight: '700' }, callback: (v) => v.toLocaleString() },
+      },
+    },
+  };
+
+  if (barChart) {
+    barChart.data = data;
+    barChart.options = options;
+    barChart.update();
+  } else {
+    barChart = new Chart(canvas.getContext('2d'), { type: 'bar', data, options });
+  }
+}
